@@ -33,6 +33,12 @@ source .venv/Scripts/activate
 # Install required libraries
 pip install PyPDF2 python-dotenv openai
 
+# run unit tests
+pytest -v
+
+# Alternatively with no venv
+py -m pip install <module>
+
 # .env
 OPENAI_API_KEY="sk-************************************"
 
