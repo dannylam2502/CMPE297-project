@@ -1,5 +1,0 @@
-# Core dependencies
-numpy
-
-# Testing
-pytest
