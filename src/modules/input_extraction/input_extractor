@@ -1,0 +1,107 @@
+"""
+input_extractor.py
+
+Simple input extraction module that:
+- Reads user input from the console
+- Sends it to OpenAI to be parsed into a structured JSON format
+- Prints the resulting JSON to stdout (ready for a fact-checking layer)
+
+Usage:
+    - Set environment variable OPENAI_API_KEY with your OpenAI API key.
+    - Run: python input_extractor.py
+"""
+
+import os
+import json
+import re
+import sys
+
+try:
+        import openai
+except ImportError:
+        raise ImportError("Install openai package: pip install openai")
+
+from dotenv import load_dotenv
+
+MODEL_NAME = "gpt-4o-mini"
+ENV_PATH = r"C:\Study\CMPE297-Cloned\Homework\Week4\w4.env"
+
+# A simple JSON schema that the model should follow.
+SCHEMA_INSTRUCTIONS = """
+Produce only valid JSON (no explanation). The JSON must follow this schema:
+
+{
+    "original_input": string,
+    "intent": string | null,            // short statement of user's intent
+    "claims": [
+        {
+            "text": string,                 // extracted claim or assertion
+            "entities": [string],           // named entities mentioned
+            "dates": [string],              // any dates/times mentioned (freeform)
+            "locations": [string],          // locations mentioned
+            "confidence": number | null,    // optional model confidence 0.0-1.0
+            "sources": [string]             // any explicit urls or citations mentioned
+        }
+    ],
+    "context": string | null            // extra context or notes
+}
+
+If a field has no value, use null or an empty list as appropriate.
+"""
+
+def call_openai_to_structure(text):
+        system_msg = (
+                "You are a strict JSON formatter. Convert user text into the JSON schema provided. "
+                "Do not add any extra fields or commentary."
+        )
+        user_msg = f"{SCHEMA_INSTRUCTIONS}\n\nUser input:\n\"\"\"\n{text}\n\"\"\""
+        try:
+                resp = openai.responses.create(
+                        model=MODEL_NAME,
+                        input=[
+                                {"role": "system", "content": system_msg},
+                                {"role": "user", "content": user_msg},
+                        ],
+                        temperature=0.0
+                )
+        except Exception as e:
+                raise RuntimeError(f"OpenAI API error: {e}")
+
+        return resp.output_text
+
+def extract_json_from_text(text):
+        # Try direct parse first
+        try:
+                return json.loads(text)
+        except Exception:
+                # attempt to extract first {...} block
+                m = re.search(r"(\{(?:.|\n)*\})", text)
+                if m:
+                        try:
+                                return json.loads(m.group(1))
+                        except Exception:
+                                pass
+        return None
+
+def main():
+        load_dotenv(ENV_PATH)
+        while True:
+            user_input = input("User: ")
+            if user_input.lower() in ['exit', 'quit']:
+                print("Exiting the chat.")
+                break
+            response_text = call_openai_to_structure(user_input)
+            structured = extract_json_from_text(response_text)
+
+            if structured is None:
+                    print("Failed to parse JSON from model response. Raw response below:\n", file=sys.stderr)
+                    print(response_text, file=sys.stderr)
+                    sys.exit(2)
+
+            # ensure original_input is present
+            structured.setdefault("original_input", user_input)
+            # pretty-print to stdout
+            print(json.dumps(structured, indent=2, ensure_ascii=False))
+
+if __name__ == "__main__":
+        main()
