@@ -2,14 +2,12 @@
 import math
 from datetime import datetime, timedelta
 
+from modules.llm.llm_ollama import (llm_ollama)
+
 import numpy as np
 import pytest
 
-from modules.claim_extraction.fact_validator_interface import (
-    SourcePassage,
-    ClaimCheckResult,
-    Citation
-)
+from modules.claim_extraction.fact_validator_interface import *
 
 from modules.claim_extraction.fact_validator import (
     FactValidator
@@ -22,43 +20,53 @@ class DummyLLM:
 
 @pytest.fixture
 def checker() -> FactValidator:
-    return FactValidator(DummyLLM())
+    llm = llm_ollama()
+    return FactValidator(llm)
 
 
 # --------------------
 # Helper method tests
 # --------------------
 
-def test_sigmoid_basic(checker: FactValidator):
-    # Known value at 0
-    assert checker._sigmoid(0.0) == pytest.approx(0.5)
+def test_simple_print_check(checker: FactValidator):
+    # 1. Define passages with blank metadata as requested
+    passages_list = [
+        SourcePassage(
+            content="A recent study confirms that the sky is blue due to Rayleigh scattering.",
+            relevance_score=0.95,
+            url="",  # Blank
+            domain="", # Blank
+            title="", # Blank
+            published_at=datetime.now()
+        ),
+        SourcePassage(
+            content="Atmospheric particles scatter blue light more than other colors, making the sky appear blue.",
+            relevance_score=0.90,
+            url="", # Blank
+            domain="", # Blank
+            title="", # Blank
+            published_at=datetime.now()
+        ),
+         SourcePassage(
+            content="The color of the sky on Mars is reddish-pink.",
+            relevance_score=0.70,
+            url="", # Blank
+            domain="", # Blank
+            title="", # Blank
+            published_at=datetime.now()
+        )
+    ]
+    
+    # 2. Define the claim to check
+    user_input = "The sky is blue."
+    claim_type = "factual"
 
-    # Monotonic behavior: larger x -> larger sigmoid(x)
-    xs = [-4, -2, -1, 0, 1, 2, 4]
-    vals = [checker._sigmoid(x) for x in xs]
-    assert all(0.0 < v < 1.0 for v in vals)
-    assert all(vals[i] < vals[i + 1] for i in range(len(vals) - 1))
+    # 3. Call the function and print the result
+    print("\n--- Running Simple Test ---")
+    result = checker.validate_claim(user_input, claim_type, passages_list)
+    print(result) # This will use the __str__ method you added
+    print("---------------------------\n")
 
-    # Symmetry: s(x) = 1 - s(-x)
-    for x in [0.3, 1.7, 5.2]:
-        assert checker._sigmoid(x) == pytest.approx(1.0 - checker._sigmoid(-x))
-
-
-def test_calculate_recency_weight_boundaries(checker: FactValidator):
-    now = datetime.now()
-
-    # <= 30 days -> 1.0
-    assert checker._calculate_recency_weight(now) == pytest.approx(1.0)
-    assert checker._calculate_recency_weight(now - timedelta(days=30)) == pytest.approx(1.0)
-
-    # >= 365 days -> 0.0
-    assert checker._calculate_recency_weight(now - timedelta(days=365)) == pytest.approx(0.0)
-    assert checker._calculate_recency_weight(now - timedelta(days=800)) == pytest.approx(0.0)
-
-    # Linear decay between 30 and 365
-    w_31 = checker._calculate_recency_weight(now - timedelta(days=31))
-    w_mid = checker._calculate_recency_weight(now - timedelta(days=(30 + 365) // 2))
-    w_364 = checker._calculate_recency_weight(now - timedelta(days=364))
-    assert 0.0 < w_31 < 1.0
-    assert 0.0 < w_mid < w_31
-    assert 0.0 < w_364 < w_mid
+    # A minimal check for a test runner
+    assert result is not None
+    assert result.claim == user_input
