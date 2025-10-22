@@ -3,3 +3,6 @@ numpy
 
 # Testing
 pytest
+
+# Models
+ollama

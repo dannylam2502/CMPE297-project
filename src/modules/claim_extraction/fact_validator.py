@@ -1,70 +1,155 @@
-from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, Literal, Any, Union
+import json
+from typing import List
 from dataclasses import dataclass, field
-import numpy as np
-from datetime import datetime
-import math
 from modules.claim_extraction.fact_validator_interface import *
 
 class FactValidator(FactValidatorInterface):
 
-    TOP_K_RETRIEVAL = 20
-    TOP_N_FEATURES = 8  # Use top 8 for feature computation
+    def validate_claim(self, claim: str, claim_type: str, passages: List[SourcePassage]) -> FactCheckResult:
+        """
+        The **Core Clean Interface** function.
+        Returns the appropriate enforced interface type (FactCheckResult).
+        """
 
-    def _calculate_recency_weight(self, published_at: datetime) -> float:
-        """Simple time decay: 1.0 if published in last 30 days, 0.0 after 365 days."""
-        # Using a simple linear decay for demonstration
-        days_old = (datetime.now() - published_at).days
-        if days_old <= 30:
-            return 1.0
-        if days_old >= 365:
-            return 0.0
-        # Linear decay between 30 and 365 days
-        return 1.0 - ((days_old - 30) / (365 - 30))
+        formatted_passages = "\n\n".join(
+            [f"Passage {i+1}: {p.content}" for i, p in enumerate(passages)]
+        )
 
-    def _sigmoid(self, x: float) -> float:
-        """Standard sigmoid function."""
-        return 1 / (1 + math.exp(-x))
-
-    def retrieve_passages(self, claim: str) -> List[SourcePassage]:
-        # TODO: Implement RAG call, de-duplication, filtering here.
         
-        mock_data = [
-            SourcePassage(f"Snippet {i}", 0.9 - i*0.05, f"http://dom{i%3}.com/art{i}", f"dom{i%3}.com", f"Title {i}", datetime(2025, 10, 16 - (i*5)), 0.8 if i < 3 else 0.4)
-            for i in range(self.TOP_K_RETRIEVAL)
+        prompt = f"""
+        You are a fact-checking assistant.
+
+        Claim:
+        "{claim}"
+
+        Here are several passages that may support or contradict it:
+
+        {formatted_passages}
+
+        For each passage, classify whether it:
+        - ENTAILS the claim,
+        - CONTRADICTS the claim, or
+        - is NEUTRAL.
+
+        Return a list in JSON format like:
+        [
+        {{ "passage": 1, "label": "entailment" }},
+        {{ "passage": 2, "label": "contradiction" }},
+        ...
         ]
-        # In a real implementation, you'd apply de-duplication and length filtering
-        return mock_data
+        """
 
-    def run_claim_checks(self, claim: str, passages: List[SourcePassage]) -> List[ClaimCheckResult]:
-        # TODO: Implement NLI model call and Numeric/Date checks.
+        llm_response_str = self.llm.message(prompt)
 
-        results = []
-        for i, passage in enumerate(passages):
-            # --- Mock Check Results (Simulating model output) ---
-            entail = np.clip(0.9 - i*0.1, 0.1, 0.9) if passage.domain != 'dom1.com' else np.clip(0.1 + i*0.05, 0.1, 0.5)
-            contradict = np.clip(0.1 + i*0.05, 0.1, 0.5) if passage.domain == 'dom1.com' else np.clip(0.05 + i*0.05, 0.05, 0.3)
+        print(f"\n--- DEBUG: RAW LLM RESPONSE ---\n{llm_response_str}\n-------------------------------\n")
+
+        # --- Start of new logic ---
+
+        # 1. Parse LLM response
+        try:
+            passage_labels = json.loads(llm_response_str)
+            if not isinstance(passage_labels, list):
+                raise json.JSONDecodeError("Response is not a list", llm_response_str, 0)
+        except (json.JSONDecodeError, TypeError):
+            # If LLM response is bad, return "Not enough evidence"
+            return FactCheckResult(
+                claim=claim,
+                verdict="Not enough evidence",
+                score=0,
+                citations=[],
+                features=FactCheckFeatures(0, 0, 0, 0, 0, 0) # Default features
+            )
+
+        # 2. Aggregate labels and collect passages
+        entailing_passages = []
+        contradicting_passages = []
+        entail_scores = []
+        contradict_scores = []
+        all_relevance = []
+        agree_domains = set()
+
+        for label_obj in passage_labels:
+            try:
+                passage_index = int(label_obj.get("passage")) - 1 # 1-based to 0-based
+                label = label_obj.get("label", "neutral").lower()
+
+                if not (0 <= passage_index < len(passages)):
+                    continue # Skip if passage number is out of bounds
+
+                passage = passages[passage_index]
+                all_relevance.append(passage.relevance_score)
+                
+                if label == "entailment":
+                    entailing_passages.append(passage)
+                    entail_scores.append(1.0) # Use 1.0 as score for simplicity
+                    contradict_scores.append(0.0)
+                    agree_domains.add(passage.domain)
+                elif label == "contradiction":
+                    contradicting_passages.append(passage)
+                    entail_scores.append(0.0)
+                    contradict_scores.append(1.0) # Use 1.0 as score
+                else:
+                    entail_scores.append(0.0)
+                    contradict_scores.append(0.0)
             
-            # Recency calculation
-            recency_weight = self._calculate_recency_weight(passage.published_at)
+            except (ValueError, TypeError, AttributeError):
+                continue # Skip malformed entries
 
-            results.append
+        # 3. Compute simplified features
+        entail_scores.sort(reverse=True)
+        features = FactCheckFeatures(
+            entail_max=max(entail_scores) if entail_scores else 0.0,
+            entail_mean3=sum(entail_scores[:3]) / 3.0 if entail_scores else 0.0,
+            contradict_max=max(contradict_scores) if contradict_scores else 0.0,
+            agree_domain_count=len(agree_domains),
+            releliance_score_avg=sum(all_relevance) / len(all_relevance) if all_relevance else 0.0,
+            recency_weight_max=0.0 # Stubbed: Calculating this requires a separate time decay function
+        )
 
-    def compute_features(self, checks: List[ClaimCheckResult]) -> FactCheckFeatures:
-        # Implementation from previous response (Spec #4)
-        top_n_checks = checks[:self.TOP_N_FEATURES]
-        # ... full implementation for calculating e_max, e_mean3, c_max, etc.
-        # ...
-        pass # replace with actual code
+        # 4. Apply simple rules for final verdict, score, and citations
+        final_verdict: VerdictType = "Not enough evidence"
+        final_score = 0
+        cite_passages = []
 
-    def compute_score_and_verdict(self, features: FactCheckFeatures) -> tuple[int, VerdictType]:
-        # Implementation from previous response (Spec #5)
-        # ... full implementation for raw score, sigmoid, and verdict policy
-        # ...
-        pass # replace with actual code
+        if len(entailing_passages) > 0 and len(contradicting_passages) > 0:
+            final_verdict = "Contested"
+            final_score = 50 # Base score for contested claims
+            # Cite one of each
+            cite_passages = entailing_passages[:1] + contradicting_passages[:1]
+        
+        elif len(entailing_passages) > 0:
+            final_verdict = "Supported"
+            # Score based on number of supporting passages
+            final_score = min(60 + (len(entailing_passages) * 15), 100) 
+            cite_passages = entailing_passages[:3] # Cite up to 3 supporting
+        
+        elif len(contradicting_passages) > 0:
+            final_verdict = "Refuted"
+            # Score based on number of refuting passages
+            final_score = min(60 + (len(contradicting_passages) * 15), 100)
+            cite_passages = contradicting_passages[:3] # Cite up to 3 refuting
+        
+        else: # Only neutral passages found
+            final_verdict = "Not enough evidence"
+            final_score = 10 # Low confidence
 
-    def select_citations(self, checks: List[ClaimCheckResult]) -> List[Citation]:
-        # Implementation from previous response (Spec #6)
-        # ... full implementation for selecting 2-3 citations
-        # ...
-        pass # replace with actual code
+        # 5. Format the final citation objects
+        final_citations = []
+        for p in cite_passages:
+            final_citations.append(
+                Citation(
+                    url=p.url,
+                    title=p.title,
+                    published_at=p.published_at,
+                    snippet=p.content[:250] + "..." # Use first 250 chars as snippet
+                )
+            )
+
+        # 6. Return the final, structured result
+        return FactCheckResult(
+            claim=claim,
+            verdict=final_verdict,
+            score=final_score,
+            citations=final_citations,
+            features=features
+        )
