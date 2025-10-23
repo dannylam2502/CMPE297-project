@@ -1,0 +1,282 @@
+﻿10/17/2025
+Use GPT Function Call & Tools to extract the user’s input.
+Call Tools from the Fact Checking Layer
+
+
+Assume we get the user’s input from the UI interface. (Yuxiao)
+
+
+Akshay: Danny + Sams + Adam
+Danny: Yuxiao
+Sams: Danny + Adam
+Adam: Danny
+
+
+First, we will start with the basic question, the goal is to analyze the input and parse it into json-structured prompt using Function Call APIs & Tools
+
+
+Example Question: Is Cristiano Ronaldo the best soccer player in the world?
+
+
+Example Parsed Input: (Sam)
+Prompt
+{
+        “Content”: “Is Cristiano Ronaldo the best soccer player in the world?”,
+        “Tools”: (Should we write a bot to find the right tool too?,
+        “Output Format”:
+}
+
+
+Example result: (Sam)
+{
+  "type":"comparative",
+  "subject":{"name":"Christiano Ronaldo"},
+  "predicate":"Best",
+  "qualifiers":{“Soccer Player}},
+  "Metrics":{"value":1.0,"unit":"fixed"},
+  “Confidence score”: 1.0
+}
+
+
+Second, call LLM for reasoning after getting the result from the module. (Akshay input here)
+Example Input:
+{
+        “Content”: Ronaldo has done …….,
+}
+
+
+Example Output: (Akshay)
+{
+        “Content”: Yes/No, because…..
+}
+
+
+Lastly, return to the UI. (Yuxiao)
+________________
+
+
+10/21/2025
+Define a claims, should we include the source of the claim?
+User: “Drinking lemon water cures cancer, according to a new study released in 2021.”
+{
+  "doc_meta": {
+    "language": "en",
+    "source_type": "string",
+    "extraction_quality_note": "Claim contains a strong assertion but lacks credible evidence."
+  },
+  "claims": [
+    {
+      "id": "C1",
+      "text_span": "Drinking lemon water cures cancer",
+      "normalized": "Drinking lemon water cures cancer",
+      "type": "causation",
+      "topic": "health",
+      "subject_entities": [],
+      "objects_entities": [],
+      "temporal": {
+        "when_text": "2021",
+        "when_iso": "2021-01-01"
+      },
+      "location": null,
+      "quantity": {
+        "value_text": null,
+        "value_num": null,
+        "unit": null
+      },
+      "stance": "uncertain",
+      "modality_hedges": [
+        "according to"
+      ],
+      "evidence_cues": {
+        "urls": [],
+        "quoted_sources": [
+          "a new study"
+        ],
+        "media_mentions": [],
+        "numbers_in_text": []
+      },
+      "sensitivity": {
+        "domain": [
+          "medical"
+        ],
+        "harm_risk": "high"
+      },
+      "verifiability": {
+        "is_checkable": true,
+        "best_evidence_types": [
+          "study"
+        ]
+      },
+      "attribution": {
+        "speaker": null,
+        "speaker_type": null
+      },
+      "context": {
+        "surrounding_sentence": null,
+        "thread_relation": "unknown"
+      }
+    }
+  ],
+  "non_claim_spans": [],
+  "original_input": "“Drinking lemon water cures cancer, according to a new study released in 2021.”"    
+}
+________________
+
+
+User:
+{
+  "doc_meta": {
+    "language": "en",
+    "source_type": "",
+    "extraction_quality_note": "No input text provided."
+  },
+  "claims": [],
+  "non_claim_spans": [],
+  "original_input": ""
+}
+User:
+{
+  "doc_meta": {
+    "language": "en",
+    "source_type": "",
+    "extraction_quality_note": "No input text provided."
+  },
+  "claims": [],
+  "non_claim_spans": [],
+  "original_input": ""
+}
+________________
+User: Christiano Ronal is the best plaeyr in the wordl
+{
+  "doc_meta": {
+    "language": "en",
+    "source_type": "string",
+    "extraction_quality_note": "Contains spelling errors and subjective opinion."
+  },
+  "claims": [
+    {
+      "id": "C1",
+      "text_span": "Christiano Ronal is the best plaeyr in the wordl",
+      "normalized": "Cristiano Ronaldo is the best player in the world",
+      "type": "attribution",
+      "topic": "sports",
+      "subject_entities": [
+        {
+          "name": "Cristiano Ronaldo",
+          "type": "person"
+        }
+      ],
+      "objects_entities": [],
+      "temporal": {
+        "when_text": null,
+        "when_iso": null
+      },
+      "location": null,
+      "quantity": {
+        "value_text": null,
+        "value_num": null,
+        "unit": null
+      },
+      "stance": "uncertain",
+      "modality_hedges": [],
+      "evidence_cues": {
+        "urls": [],
+        "quoted_sources": [],
+        "media_mentions": [],
+        "numbers_in_text": []
+      },
+      "sensitivity": {
+        "domain": [
+          "sports"
+        ],
+        "harm_risk": "low"
+      },
+      "verifiability": {
+        "is_checkable": false,
+        "best_evidence_types": []
+      },
+      "attribution": {
+        "speaker": null,
+        "speaker_type": null
+      },
+      "context": {
+        "surrounding_sentence": null,
+        "thread_relation": "unknown"
+      }
+    }
+  ],
+  "non_claim_spans": [],
+  "original_input": "Christiano Ronal is the best plaeyr in the wordl"
+}
+________________
+
+
+User: Yesterday, San jose seems to have rain in half of the city
+{
+  "doc_meta": {
+    "language": "en",
+    "source_type": "string",
+    "extraction_quality_note": "Claim contains uncertainty due to the word 'seems'."
+  },
+  "claims": [
+    {
+      "id": "C1",
+      "text_span": "San jose seems to have rain in half of the city",
+      "normalized": "San Jose had rain in half of the city yesterday",
+      "type": "existence",
+      "topic": "weather",
+      "subject_entities": [
+        {
+          "name": "San Jose",
+          "type": "place"
+        }
+      ],
+      "objects_entities": [],
+      "temporal": {
+        "when_text": "yesterday",
+        "when_iso": "2023-10-09"
+      },
+      "location": "San Jose",
+      "quantity": {
+        "value_text": "half",
+        "value_num": 0.5,
+        "unit": "fraction"
+      },
+      "stance": "uncertain",
+      "modality_hedges": [
+        "seems"
+      ],
+      "evidence_cues": {
+        "urls": [],
+        "quoted_sources": [],
+        "media_mentions": [],
+        "numbers_in_text": []
+      },
+      "sensitivity": {
+        "domain": [
+          "weather"
+        ],
+        "harm_risk": "low"
+      },
+      "verifiability": {
+        "is_checkable": true,
+        "best_evidence_types": [
+          "weather report"
+        ]
+      },
+      "attribution": {
+        "speaker": null,
+        "speaker_type": null
+      },
+      "context": {
+        "surrounding_sentence": null,
+        "thread_relation": "unknown"
+      }
+    }
+  ],
+  "non_claim_spans": [],
+  "original_input": "Yesterday, San jose seems to have rain in half of the city"
+}
+
+
+________________
