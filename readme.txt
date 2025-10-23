@@ -31,19 +31,7 @@ python -m venv .venv
 source .venv/Scripts/activate
 
 # Install required libraries
-pip install -r requirements.txt
-
-# ollama install
-1. install from website
-2. pull model `ollama pull lama3.1`
-3. confirm with `ollama list`
-
-# Alternatively with no venv
-py -m pip install <module>
-
-# run unit tests
-pytest -vs
-
+pip install PyPDF2 python-dotenv openai
 
 # .env
 OPENAI_API_KEY="sk-************************************"
