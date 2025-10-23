@@ -10,5 +10,143 @@
     "claim": "The COVID-19 vaccine alters human DNA.",
     "source": "factcheck.org",
     "confidence": 0.1
+  },
+  {
+    "id": 3,
+    "claim": "Climate change is primarily caused by human activity.",
+    "source": "ipcc.ch",
+    "confidence": 0.97
+  },
+  {
+    "id": 4,
+    "claim": "5G mobile networks cause cancer in humans.",
+    "source": "who.int",
+    "confidence": 0.05
+  },
+  {
+    "id": 5,
+    "claim": "The James Webb Space Telescope can observe galaxies formed over 13 billion years ago.",
+    "source": "nasa.gov",
+    "confidence": 0.96
+  },
+  {
+    "id": 6,
+    "claim": "Eating garlic can cure viral infections such as COVID-19.",
+    "source": "who.int",
+    "confidence": 0.08
+  },
+  {
+    "id": 7,
+    "claim": "Artificial intelligence models can write coherent essays and code.",
+    "source": "mit.edu",
+    "confidence": 0.92
+  },
+  {
+    "id": 8,
+    "claim": "Vaccines contain microchips that track individuals.",
+    "source": "factcheck.org",
+    "confidence": 0.02
+  },
+  {
+    "id": 9,
+    "claim": "The Amazon rainforest produces about 20% of the world's oxygen.",
+    "source": "nationalgeographic.com",
+    "confidence": 0.85
+  },
+  {
+    "id": 10,
+    "claim": "Drinking bleach can eliminate viruses from your body.",
+    "source": "cdc.gov",
+    "confidence": 0.0
+  },
+  {
+    "id": 11,
+    "claim": "Electric vehicles produce zero carbon emissions.",
+    "source": "epa.gov",
+    "confidence": 0.6
+  },
+  {
+    "id": 12,
+    "claim": "Mars once had liquid water on its surface.",
+    "source": "nasa.gov",
+    "confidence": 0.94
+  },
+  {
+    "id": 13,
+    "claim": "Humans use only 10% of their brains.",
+    "source": "scientificamerican.com",
+    "confidence": 0.15
+  },
+  {
+    "id": 14,
+    "claim": "The Earth’s magnetic field is weakening faster than scientists expected.",
+    "source": "esa.int",
+    "confidence": 0.88
+  },
+  {
+    "id": 15,
+    "claim": "Wearing masks helps reduce the spread of airborne diseases.",
+    "source": "cdc.gov",
+    "confidence": 0.93
+  },
+  {
+    "id": 16,
+    "claim": "The Moon landing in 1969 was faked in a Hollywood studio.",
+    "source": "history.com",
+    "confidence": 0.01
+  },
+  {
+    "id": 17,
+    "claim": "Global temperatures have been rising steadily since the late 19th century.",
+    "source": "noaa.gov",
+    "confidence": 0.95
+  },
+  {
+    "id": 18,
+    "claim": "Eating chocolate before bed improves your sleep quality.",
+    "source": "nih.gov",
+    "confidence": 0.25
+  },
+  {
+    "id": 19,
+    "claim": "CRISPR allows scientists to edit genes with high precision.",
+    "source": "nature.com",
+    "confidence": 0.94
+  },
+  {
+    "id": 20,
+    "claim": "AI will surpass human intelligence in every field by 2030.",
+    "source": "stanford.edu",
+    "confidence": 0.5
+  },
+  {
+    "id": 21,
+    "claim": "Wind turbines cause significant harm to human health due to infrasound.",
+    "source": "energy.gov",
+    "confidence": 0.1
+  },
+  {
+    "id": 22,
+    "claim": "Bitcoin uses more electricity annually than some countries.",
+    "source": "bbc.com",
+    "confidence": 0.9
+  },
+  {
+    "id": 23,
+    "claim": "The ozone layer is showing signs of recovery due to reduced CFC emissions.",
+    "source": "unep.org",
+    "confidence": 0.93
+  },
+  {
+    "id": 24,
+    "claim": "Vaccinated individuals emit Bluetooth signals.",
+    "source": "factcheck.org",
+    "confidence": 0.0
+  },
+  {
+    "id": 25,
+    "claim": "Solar energy is now one of the cheapest sources of electricity.",
+    "source": "iea.org",
+    "confidence": 0.92
   }
 ]
