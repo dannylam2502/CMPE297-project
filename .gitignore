@@ -54,4 +54,4 @@ desktop.ini
 # ------------------------------------
 # This file is explicitly tracked by default because it is not ignored.
 # You do NOT need a special line for it:
-# chatbot.py
+# chatbot.py.env
