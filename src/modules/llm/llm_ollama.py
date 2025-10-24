@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 import ollama
-
 from modules.llm.llm_engine_interface import *
 
 class llm_ollama(LLMInterface):
@@ -13,11 +12,11 @@ class llm_ollama(LLMInterface):
         import subprocess
         try:
             ollama.list()
+            return  # Already running
         except:
             subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             import time
             time.sleep(3)
-        self._ensure_ollama_running()
 
     def message(self, message: str) -> str:
         return self.message_raw(message).message.content
@@ -28,4 +27,3 @@ class llm_ollama(LLMInterface):
     def set_role(self, role):
         self.role = role
         return self
-        
