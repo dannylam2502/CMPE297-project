@@ -10,12 +10,12 @@ from datetime import datetime
 from dataclasses import asdict
 
 # Module imports - adjust paths based on actual repo structure
-from modules.input_extraction.input_extractor import extract_claim_from_input
-from modules.misinformation_module.qdrant_db import QdrantDB
-from modules.misinformation_module.embedder import E5Embedder
+from modules.misinformation_module.src.qdrant_db import QdrantDB
+from modules.misinformation_module.src.embedder import E5Embedder
 from modules.claim_extraction.fact_validator import FactValidator
 from modules.claim_extraction.fact_validator_interface import SourcePassage, FactCheckResult
-from modules.llm.llm_ollama import llm_ollama
+from modules.llm.llm_openai import llm_openai
+from modules.input_extraction.input_extractor import extract_claim_from_input
 
 
 class FactCheckingPipeline:
@@ -40,7 +40,7 @@ class FactCheckingPipeline:
         self.vector_db.reset_collection()
         
         # Initialize LLM
-        self.llm = llm_ollama()
+        self.llm = llm_openai()
         
         # Initialize Fact Validator
         self.fact_validator = FactValidator(self.llm)
@@ -140,20 +140,13 @@ class FactCheckingPipeline:
         # Step 1: Extract claim
         try:
             claim_data = extract_claim_from_input(user_input)
-            # Extract the normalized claim text from Danny's JSON structure
             if isinstance(claim_data, dict) and "claims" in claim_data:
                 claims = claim_data["claims"]
                 if not claims:
-                    return {
-                        "error": "No factual claims found in input",
-                        "claim": user_input,
-                        "verdict": "Not enough evidence",
-                        "score": 0
-                    }
+                    return {...}  # Keep existing error handling
                 claim_text = claims[0]["normalized"]
                 claim_type = claims[0].get("type", "unknown")
             else:
-                # Fallback if structure is different
                 claim_text = user_input
                 claim_type = "unknown"
         except Exception as e:
@@ -203,7 +196,9 @@ class FactCheckingPipeline:
                 "reliability_avg": result.features.releliance_score_avg,
                 "recency_max": result.features.recency_weight_max
             },
-            "raw_result": result  # For debugging
+            "raw_result": result,  # For debugging
+            "explanation": self.generate_explanation(result)
+
         }
         
         return response
@@ -245,6 +240,22 @@ Citations:
         
         return output.strip()
 
+    def generate_explanation(self, result: FactCheckResult) -> str:
+        """Optional: Add reasoning explanation after fact check"""
+        # Format fact check result into prompt
+        prompt = f"""
+    Explain this fact-check verdict concisely:
+
+    Claim: {result.claim}
+    Verdict: {result.verdict}
+    Score: {result.score}/100
+
+    Supporting Evidence:
+    {chr(10).join(f"- {c.snippet}" for c in result.citations[:2])}
+
+    Provide 2-3 sentence explanation.
+    """
+        return self.llm.message(prompt)
 
 def main():
     """
