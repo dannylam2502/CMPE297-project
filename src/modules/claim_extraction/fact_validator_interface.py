@@ -2,6 +2,7 @@ from abc import ABC
 from typing import List, Literal
 from dataclasses import dataclass, field
 from datetime import datetime
+from modules.llm.llm_engine_interface import LLMInterface
 
 # --- Unmodified Classes (default repr is fine) ---
 
