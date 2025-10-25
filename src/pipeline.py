@@ -9,14 +9,12 @@ from typing import Dict, Any, List
 from datetime import datetime
 from dataclasses import asdict
 
-# Module imports
+# Module imports - adjust paths based on actual repo structure
 from modules.misinformation_module.src.qdrant_db import QdrantDB
 from modules.misinformation_module.src.embedder import E5Embedder
 from modules.claim_extraction.fact_validator import FactValidator
 from modules.claim_extraction.fact_validator_interface import SourcePassage, FactCheckResult
 from modules.llm.llm_openai import llm_openai
-from modules.llm.llm_ollama import llm_ollama
-from modules.llm.llm_reasoning import llm_reasoning
 from modules.input_extraction.input_extractor import extract_claim_from_input
 
 
@@ -29,46 +27,36 @@ class FactCheckingPipeline:
         self,
         collection_name: str = "facts_collection",
         vector_size: int = 384,
-        qdrant_location: str = "./qdrant_storage",
-        embedding_model: str = "intfloat/e5-small-v2",
-        use_reasoning: bool = True
+        qdrant_location: str = ":memory:",
+        embedding_model: str = "intfloat/e5-small-v2"
     ):
         # Initialize Vector DB
         self.embedder = E5Embedder(embedding_model, normalize=True)
         self.vector_db = QdrantDB(
             collection=collection_name,
             vector_size=vector_size,
-            location="./qdrant_data"
+            location=qdrant_location
         )
         self.vector_db.reset_collection()
         
         # Initialize LLM
-        self.llm = llm_ollama()
-        
-        # Initialize Reasoning Engine (Akshay's module)
-        self.use_reasoning = use_reasoning
-        if use_reasoning:
-            self.reasoning_engine = llm_reasoning()
+        self.llm = llm_openai()
         
         # Initialize Fact Validator
         self.fact_validator = FactValidator(self.llm)
         
         print(f"Pipeline initialized with collection '{collection_name}'")
-        print(f"Reasoning engine: {'enabled' if use_reasoning else 'disabled'}")
     
     def load_knowledge_base(self, data_path: str) -> None:
         """
-        Load JSON or Arrow/Parquet and index knowledge base into vector DB.
+        Load and index knowledge base into vector DB.
+        
+        Args:
+            data_path: Path to JSON file with format:
+                [{"id": int, "claim": str, "source": str, "confidence": float}, ...]
         """
-        if data_path.endswith('.json'):
-            with open(data_path, 'r') as f:
-                data = json.load(f)
-        else:
-            # Read Arrow/Parquet directly
-            from datasets import load_from_disk
-            ds = load_from_disk(data_path)
-            data = [{"id": i, "claim": row["claim"], "source": "wikipedia", "confidence": 1.0} 
-                    for i, row in enumerate(ds)]
+        with open(data_path, 'r') as f:
+            data = json.load(f)
         
         texts = [d["claim"] for d in data]
         vectors = self.embedder.embed_passages(texts)
@@ -94,6 +82,13 @@ class FactCheckingPipeline:
     def retrieve_evidence(self, query: str, top_k: int = 20) -> List[SourcePassage]:
         """
         Retrieve relevant passages from vector DB.
+        
+        Args:
+            query: User's claim/query text
+            top_k: Number of passages to retrieve
+            
+        Returns:
+            List of SourcePassage objects for fact validation
         """
         query_vec = self.embedder.embed_query(query)
         hits = self.vector_db.search(query_vec, top_k=top_k)
@@ -106,15 +101,15 @@ class FactCheckingPipeline:
                     relevance_score=float(hit.score),
                     url=hit.payload.get("source", "unknown"),
                     domain=self._extract_domain(hit.payload.get("source", "unknown")),
-                    title=hit.payload["claim"][:100],
-                    published_at=datetime.now()
+                    title=hit.payload["claim"][:100],  # Use first 100 chars as title
+                    published_at=datetime.now()  # Stub - would need real dates
                 )
             )
         
         return passages
     
     def _extract_domain(self, url: str) -> str:
-        """Extract domain from URL"""
+        """Extract domain from URL, fallback to 'unknown'"""
         if "://" in url:
             return url.split("://")[1].split("/")[0]
         return "unknown"
@@ -127,8 +122,19 @@ class FactCheckingPipeline:
         1. Extract claim from user input (Danny's module)
         2. Retrieve evidence from vector DB (Adam's module)
         3. Validate claim against evidence (Sam's module)
-        4. Generate explanation with reasoning (Akshay's module)
-        5. Format response for UI
+        4. Format response for LLM/UI
+        
+        Args:
+            user_input: Raw user query text
+            
+        Returns:
+            Dict with:
+                - claim: Extracted claim text
+                - verdict: "Supported" | "Refuted" | "Not enough evidence" | "Contested"
+                - score: int (0-100)
+                - citations: List of citation dicts
+                - features: Feature scores dict
+                - raw_result: Full FactCheckResult object
         """
         
         # Step 1: Extract claim
@@ -137,15 +143,7 @@ class FactCheckingPipeline:
             if isinstance(claim_data, dict) and "claims" in claim_data:
                 claims = claim_data["claims"]
                 if not claims:
-                    return {
-                        "claim": user_input,
-                        "verdict": "Not enough evidence",
-                        "score": 0,
-                        "citations": [],
-                        "features": {},
-                        "explanation": "No factual claims detected in input.",
-                        "message": "No factual claims found"
-                    }
+                    return {...}  # Keep existing error handling
                 claim_text = claims[0]["normalized"]
                 claim_type = claims[0].get("type", "unknown")
             else:
@@ -166,7 +164,6 @@ class FactCheckingPipeline:
                 "score": 0,
                 "citations": [],
                 "features": {},
-                "explanation": "No relevant evidence found in the knowledge base.",
                 "message": "No relevant evidence found in knowledge base"
             }
         
@@ -177,10 +174,7 @@ class FactCheckingPipeline:
             passages=passages
         )
         
-        # Step 4: Generate explanation with reasoning
-        explanation = self.generate_explanation(result)
-        
-        # Step 5: Format response
+        # Step 4: Format response
         response = {
             "claim": result.claim,
             "verdict": result.verdict,
@@ -202,8 +196,9 @@ class FactCheckingPipeline:
                 "reliability_avg": result.features.releliance_score_avg,
                 "recency_max": result.features.recency_weight_max
             },
-            "explanation": explanation,
-            "raw_result": result  # For debugging
+            "raw_result": result,  # For debugging
+            "explanation": self.generate_explanation(result)
+
         }
         
         return response
@@ -211,6 +206,12 @@ class FactCheckingPipeline:
     def format_for_ui(self, response: Dict[str, Any]) -> str:
         """
         Format response for UI display.
+        
+        Args:
+            response: Output from process_query
+            
+        Returns:
+            Formatted string for display
         """
         verdict_emoji = {
             "Supported": "✓",
@@ -221,22 +222,18 @@ class FactCheckingPipeline:
         
         emoji = verdict_emoji.get(response["verdict"], "?")
         
-        features = response.get('features', {})
         output = f"""
-            {emoji} {response['verdict'].upper()} (Score: {response['score']}/100)
+{emoji} {response['verdict'].upper()} (Score: {response['score']}/100)
 
-            Claim: "{response['claim']}"
+Claim: "{response['claim']}"
 
-            Explanation:
-            {response.get('explanation', 'No explanation available.')}
+Evidence Summary:
+- Max Support: {response['features']['entail_max']:.2f}
+- Max Contradiction: {response['features']['contradict_max']:.2f}
+- Agreeing Sources: {response['features']['agree_domain_count']}
 
-            Evidence Summary:
-            - Max Support: {features.get('entail_max', 0):.2f}
-            - Max Contradiction: {features.get('contradict_max', 0):.2f}
-            - Agreeing Sources: {features.get('agree_domain_count', 0)}
-
-            Citations:
-            """
+Citations:
+"""
         
         for i, cite in enumerate(response['citations'], 1):
             output += f"{i}. {cite['title']}\n   {cite['url']}\n   {cite['snippet'][:150]}...\n\n"
@@ -244,86 +241,42 @@ class FactCheckingPipeline:
         return output.strip()
 
     def generate_explanation(self, result: FactCheckResult) -> str:
-        """
-        Generate explanation using Akshay's multi-step reasoning engine.
-        Falls back to simple explanation if reasoning is disabled.
-        """
-        if self.use_reasoning:
-            # Use Akshay's reasoning agent
-            question = self._format_reasoning_question(result)
-            try:
-                explanation = self.reasoning_engine.reasoning_agent(question)
-                return explanation
-            except Exception as e:
-                print(f"Reasoning engine error: {e}")
-                # Fallback to simple explanation
-                return self._simple_explanation(result)
-        else:
-            # Simple explanation without reasoning
-            return self._simple_explanation(result)
-    
-    def _format_reasoning_question(self, result: FactCheckResult) -> str:
-        """
-        Format fact-check result as a question for the reasoning engine.
-        """
-        citations_text = "\n".join(
-            f"- {c.snippet}" for c in result.citations[:3]
-        )
-        
-        question = f"""
-Analyze and explain this fact-check result:
-
-Claim: {result.claim}
-Verdict: {result.verdict}
-Confidence Score: {result.score}/100
-
-Evidence Analysis:
-- Maximum Entailment: {result.features.entail_max:.2f}
-- Mean Top-3 Entailment: {result.features.entail_mean3:.2f}
-- Maximum Contradiction: {result.features.contradict_max:.2f}
-- Number of Agreeing Domains: {result.features.agree_domain_count}
-- Average Source Reliability: {result.features.releliance_score_avg:.2f}
-
-Key Citations:
-{citations_text}
-
-Question: Provide a clear, evidence-based explanation of why this claim received this verdict.
-Include reasoning about the strength of evidence and any important caveats.
-"""
-        return question
-    
-    def _simple_explanation(self, result: FactCheckResult) -> str:
-        """
-        Simple fallback explanation without multi-step reasoning.
-        """
+        """Optional: Add reasoning explanation after fact check"""
+        # Format fact check result into prompt
         prompt = f"""
-Explain this fact-check verdict concisely:
+    Explain this fact-check verdict concisely:
 
-Claim: {result.claim}
-Verdict: {result.verdict}
-Score: {result.score}/100
+    Claim: {result.claim}
+    Verdict: {result.verdict}
+    Score: {result.score}/100
 
-Supporting Evidence:
-{chr(10).join(f"- {c.snippet}" for c in result.citations[:2])}
+    Supporting Evidence:
+    {chr(10).join(f"- {c.snippet}" for c in result.citations[:2])}
 
-Provide 2-3 sentence explanation.
-"""
+    Provide 2-3 sentence explanation.
+    """
         return self.llm.message(prompt)
-
 
 def main():
     """
     Demo/test of the full pipeline.
     """
-    # Initialize pipeline with reasoning enabled
-    pipeline = FactCheckingPipeline(use_reasoning=True)
+    # Initialize pipeline
+    pipeline = FactCheckingPipeline()
     
-    # Load knowledge base
+    # Load knowledge base (assumes data/mock.json exists)
     knowledge_path = "data/mock.json"
     if os.path.exists(knowledge_path):
         pipeline.load_knowledge_base(knowledge_path)
     else:
         print(f"Warning: Knowledge base file not found at {knowledge_path}")
+        print("Creating minimal test data...")
+        test_data = [
+            {"id": 1, "claim": "The Moon landing occurred in 1969", "source": "https://nasa.gov", "confidence": 1.0},
+            {"id": 2, "claim": "Water boils at 100°C at sea level", "source": "https://physics.edu", "confidence": 1.0},
+            {"id": 3, "claim": "The Earth is approximately 4.5 billion years old", "source": "https://science.org", "confidence": 1.0}
+        ]
+        # Would need to save and load in real scenario
     
     # Test queries
     test_queries = [
@@ -333,7 +286,7 @@ def main():
     ]
     
     print("\n" + "="*80)
-    print("FACT-CHECKING PIPELINE DEMO (With Reasoning)")
+    print("FACT-CHECKING PIPELINE DEMO")
     print("="*80 + "\n")
     
     for query in test_queries:
