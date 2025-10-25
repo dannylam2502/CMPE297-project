@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "claim": "NASA’s Artemis program aims to return humans to the Moon by 2026.",
+    "source": "nasa.gov",
+    "confidence": 0.95
+  },
+  {
+    "id": 2,
+    "claim": "The COVID-19 vaccine alters human DNA.",
+    "source": "factcheck.org",
+    "confidence": 0.1
+  }
+]
