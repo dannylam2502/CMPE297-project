@@ -1,0 +1,43 @@
+﻿My Module Summary — Vector Database + Embeddings
+
+
+Responsibilities:
+
+
+Embed data — convert text or factual statements into numerical vectors using a free, high-quality embedding model from Hugging Face.
+
+
+Store the embeddings in Qdrant, an open-source vector database.
+
+
+Query Qdrant to retrieve semantically similar entries based on user input.
+
+
+Return the most relevant facts or documents to the reasoning module (LLM) for explanation or verification.
+
+
+Choices:
+
+
+Embedding model: Free models on Hugging Face (intfloat/e5-small-v2).
+
+
+Vector database: Qdrant (free + open source).
+
+
+Next steps:
+Once we validate the end-to-end pipeline with mock data, we can integrate a re-ranking layer (like Elasticsearch) for hybrid search and improved retrieval accuracy.
+
+
+Mock data example:
+
+
+mock_data = [
+    {"id": 1, "claim": "NASA’s Artemis program aims to return humans to the Moon by 2026.", "source": "nasa.gov", "confidence": 0.95},
+    {"id": 2, "claim": "The COVID-19 vaccine alters human DNA.", "source": "factcheck.org", "confidence": 0.1}
+]
+
+
+
+
+Data is embedded -> stored in Qdrant -> queried for similarity -> and the retrieved facts are fed into the LLM for reasoning.

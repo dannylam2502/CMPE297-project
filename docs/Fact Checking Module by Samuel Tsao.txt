@@ -1,0 +1,93 @@
+﻿Fact Checking Module by Samuel Tsao
+1) Inputs & Assumptions
+Claim: one cleaned, normalized, factual (non-opinion) claim.
+RAG interface: returns top-k relevant passages with:
+relevance/ranking scores (not truth),
+source metadata (URL, domain, title, published_at),
+optional source reliability score ∈ [0,1].
+External APIs are out of scope for MVP (use RAG corpus); may be added later and then fed into RAG.
+2) Retrieval & Preprocessing
+Retrieve k ≥ 20 passages for the claim.
+De-duplicate by URL/domain; drop very short/very long passages.
+Compute recency weight (mild time decay) from published_at.
+Treat retrieval “confidence/rank” as relevance only (truth is decided by this module).
+3) Claim Checks
+Natural-language check (NLI): classify each (claim, passage) as
+entail, contradict, or neutral with probabilities.
+Numeric/date check: parse numbers/dates, normalize units, compare with small tolerances (e.g., ±2% or ±1 unit).
+Temporal sanity: prefer newer credible sources; down-weight stale ones.
+
+
+Will calculate scores differently based on type
+4) Features (computed on re-ranked top 5–8)
+e_max = max entailment probability
+e_mean3 = mean entailment of top-3 passages
+c_max = max contradiction probability
+agree_dom = # of agreeing unique domains (entail ≥ 0.6, contradict < 0.5)
+rel_avg = average source reliability over top-3
+rec_max = max recency weight (0–1)
+5) Scoring & Verdict
+Raw score
+raw = 0.40*e_max
+    + 0.20*e_mean3
+    + 0.15*min(agree_dom/3, 1)
+    + 0.15*rel_avg
+    + 0.10*rec_max
+    - 0.25*c_max
+Final score (0–100)
+Apply a sigmoid to raw (or min–max on an observed window), then scale to 0–100.
+Example: score = round(100 * sigmoid((raw - 0.5)/0.15))
+Verdict policy
+Supported if: e_max ≥ 0.70 AND agree_dom ≥ 2 AND c_max < 0.40
+Refuted if: c_max ≥ 0.70
+Not enough evidence otherwise
+(Optional extension: “Contested” if e_max ≥ 0.70 and c_max ≥ 0.50.)
+6) Output
+{
+  claim: string,
+  verdict: "Supported" | "Refuted" | "Not enough evidence",
+  score: 0–100,
+  citations: [
+    { url, title, published_at, snippet }  // pick 2–3: highest entail, diverse domains, newest
+  ],
+  features: { e_max, e_mean3, c_max, agree_dom, rel_avg, rec_max }
+}
+7) Notes / Future Extensions
+Add topic-aware time decay (stronger for fast-changing domains).
+Include num_ok (0/1) as a small bonus feature from numeric/date checks.
+Train a lightweight calibration model (logistic/isotonic) on labeled data to map features → score.
+The feature vector (above) can be fed into a small neural net later for learned scoring
+
+
+
+
+Example:
+claim = "The official number of active spacecraft orbiting Earth, as of the beginning of 2024, exceeded 9,000."
+
+{
+  "claim": "The official number of active spacecraft orbiting Earth, as of the beginning of 2024, exceeded 9,000.",
+  "verdict": "Supported",
+  "score": 92,
+  "citations": [
+    {
+      "url": "https://credible-space-agency.gov/stat_2024",
+      "title": "Orbital Debris Quarterly Report (Q1 2024)",
+      "published_at": "2024-02-15T00:00:00Z",
+      "snippet": "Our database recorded 9,210 operational satellites as of January 1, 2024, confirming the growth trend."
+    },
+    {
+      "url": "https://major-university-study.edu/space_tech_2024",
+      "title": "The Global Satellite Census: 2024 Edition",
+      "published_at": "2024-03-01T00:00:00Z",
+      "snippet": "With the recent launches, the total count of active spacecraft surpassed the 9k mark in late 2023."
+    }
+  ],
+  "features": {
+    "entail_max": 0.95,
+    "entail_mean3": 0.88,
+    "contradict_max": 0.12,
+    "agree_domain_count": 4,
+    "releliance_score_avg": 0.85,
+    "recency_weight_max": 1.0
+  }
+}
