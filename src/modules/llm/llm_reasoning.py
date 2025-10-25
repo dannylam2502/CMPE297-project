@@ -3,10 +3,11 @@ from openai import OpenAI
 from src.modules.llm.llm_reasoning_interface import LLMReasoningInterface
 
 class llm_reasoning(LLMReasoningInterface):
-    def __init__(self) :
+    def __init__(self, temperature=0.3) :
         self.role = "user"
+        self.temperature = temperature
 
-    def call_llm(prompt, model="gpt-4", temperature=0.3):
+    def call_llm(self,prompt, model="gpt-4"):
         """
         Simple wrapper for OpenAI Chat API call.
         """
@@ -16,7 +17,7 @@ class llm_reasoning(LLMReasoningInterface):
             model=model,
             messages=[{"role": "system", "content": "You are a helpful reasoning assistant."},
                       {"role": "user", "content": prompt}],
-            temperature=temperature,
+            temperature=self.temperature,
             max_tokens=1000
         )
         return response.choices[0].message.content.strip()
@@ -88,4 +89,15 @@ Is this answer correct? If not, explain the mistake. If yes, justify it.
         print("Step 5: Verifying the Final Answer")
         verification = question.step_5_verify(final, question)
         print(verification)
+
+        return {
+            "understanding": understanding,
+            "decomposition": decomposition,
+            "solutions": solutions,
+            "final": final,
+            "verification": verification
+        }
+
+
+
 
