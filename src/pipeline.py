@@ -15,6 +15,7 @@ from modules.misinformation_module.src.embedder import E5Embedder
 from modules.claim_extraction.fact_validator import FactValidator
 from modules.claim_extraction.fact_validator_interface import SourcePassage, FactCheckResult
 from modules.llm.llm_openai import llm_openai
+from modules.llm.llm_reasoning import llm_reasoning 
 from modules.input_extraction.input_extractor import extract_claim_from_input
 
 
@@ -28,9 +29,11 @@ class FactCheckingPipeline:
         collection_name: str = "facts_collection",
         vector_size: int = 384,
         qdrant_location: str = ":memory:",
-        embedding_model: str = "intfloat/e5-small-v2"
+        embedding_model: str = "intfloat/e5-small-v2",
+        use_reasoning: bool = True 
     ):
         # Initialize Vector DB
+        self.use_reasoning = use_reasoning
         self.embedder = E5Embedder(embedding_model, normalize=True)
         self.vector_db = QdrantDB(
             collection=collection_name,
@@ -44,8 +47,12 @@ class FactCheckingPipeline:
         
         # Initialize Fact Validator
         self.fact_validator = FactValidator(self.llm)
+        # Initialize Reasoning Engine (if enabled)
+        if self.use_reasoning:
+            self.reasoning_engine = llm_reasoning()
         
         print(f"Pipeline initialized with collection '{collection_name}'")
+        print(f"Reasoning engine: {'enabled' if self.use_reasoning else 'disabled'}")
     
     def load_knowledge_base(self, data_path: str) -> None:
         """
@@ -241,21 +248,22 @@ Citations:
         return output.strip()
 
     def generate_explanation(self, result: FactCheckResult) -> str:
-        """Optional: Add reasoning explanation after fact check"""
-        # Format fact check result into prompt
-        prompt = f"""
-    Explain this fact-check verdict concisely:
+        """Generate explanation using Akshay's multi-step reasoning"""
+        if not self.use_reasoning:
+            # Simple fallback
+            prompt = f"Explain this verdict: {result.claim} is {result.verdict} (score: {result.score}/100)"
+            return self.llm.message(prompt)
+        
+        # Use Akshay's reasoning agent
+        question = f"""Analyze this fact-check result:
+        Claim: {result.claim}
+        Verdict: {result.verdict}
+        Score: {result.score}/100
+        Citations: {chr(10).join(c.snippet[:100] for c in result.citations[:2])}
 
-    Claim: {result.claim}
-    Verdict: {result.verdict}
-    Score: {result.score}/100
-
-    Supporting Evidence:
-    {chr(10).join(f"- {c.snippet}" for c in result.citations[:2])}
-
-    Provide 2-3 sentence explanation.
-    """
-        return self.llm.message(prompt)
+        Explain why this verdict was reached."""
+        
+        return self.reasoning_engine.reasoning_agent(question)
 
 def main():
     """
