@@ -1,9 +1,25 @@
 import json
+import re
 from typing import List
 from dataclasses import dataclass, field
 from modules.claim_extraction.fact_validator_interface import *
 
 class FactValidator(FactValidatorInterface):
+    
+    def _extract_json_array(self, text: str) -> list:
+        """Extract JSON array from text that may have preamble/postamble"""
+        try:
+            # First try direct parsing
+            return json.loads(text)
+        except:
+            # Look for array pattern
+            match = re.search(r'\[(?:[^[\]]|\[[^\]]*\])*\]', text, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except:
+                    pass
+        return None
 
     def validate_claim(self, claim: str, claim_type: str, passages: List[SourcePassage]) -> FactCheckResult:
         """
@@ -46,18 +62,16 @@ class FactValidator(FactValidatorInterface):
         # --- Start of new logic ---
 
         # 1. Parse LLM response
-        try:
-            passage_labels = json.loads(llm_response_str)
-            if not isinstance(passage_labels, list):
-                raise json.JSONDecodeError("Response is not a list", llm_response_str, 0)
-        except (json.JSONDecodeError, TypeError):
+        passage_labels = self._extract_json_array(llm_response_str)
+        
+        if not passage_labels or not isinstance(passage_labels, list):
             # If LLM response is bad, return "Not enough evidence"
             return FactCheckResult(
                 claim=claim,
                 verdict="Not enough evidence",
                 score=0,
                 citations=[],
-                features=FactCheckFeatures(0, 0, 0, 0, 0, 0) # Default features
+                features=FactCheckFeatures(0, 0, 0, 0, 0, 0)
             )
 
         # 2. Aggregate labels and collect passages
