@@ -22,7 +22,7 @@ def load_fever():
     """
     print("Downloading FEVER dataset...")
     
-    dataset = load_dataset("fever", "v1.0", split="train")
+    dataset = load_dataset("fever", "v1.0", split="train", trust_remote_code=True)
     
     print(f"Processing {len(dataset)} claims...")
     

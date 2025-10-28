@@ -1,26 +1,20 @@
 from dotenv import load_dotenv
-
 from modules.llm.llm_engine_interface import LLMInterface
 load_dotenv(override=True)
 
-from openai import OpenAI
 from modules.llm.llm_reasoning_interface import LLMReasoningInterface
 
 class llm_reasoning(LLMReasoningInterface):
-    def __init__(self, llm: LLMInterface, temperature=0.3):
+    def __init__(self, llm: LLMInterface):
         self.llm = llm.build()
-        self.model = "gpt-4o-mini"
-        self.llm.temperature = temperature
 
     def call_llm(self, prompt):
-        """Simple wrapper for OpenAI Chat API call."""
-        response = self.llm.raw_messages(
+        return self.llm.raw_messages(
             messages=[
                 {"role": "system", "content": "You are a helpful reasoning assistant."},
                 {"role": "user", "content": prompt}
             ],
-        )
-        return response.choices[0].message.content.strip()
+        ).strip()
 
     def step_1_understand(self, question):
         prompt = f"""Understand the following problem and describe what is being asked:
@@ -69,7 +63,6 @@ Is this answer correct? If not, explain the mistake. If yes, justify it.
         return self.call_llm(prompt)
 
     def reasoning_agent(self, question):
-        """Main reasoning loop"""
         understanding = self.step_1_understand(question)
         decomposition = self.step_2_decompose(understanding)
         solutions = self.step_3_solve_each(decomposition)
