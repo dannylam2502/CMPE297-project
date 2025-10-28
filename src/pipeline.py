@@ -239,7 +239,14 @@ class FactCheckingPipeline:
             if isinstance(claim_data, dict) and "claims" in claim_data:
                 claims = claim_data["claims"]
                 if not claims:
-                    return {...}  # Keep existing error handling
+                    return {
+                        "claim": user_input,
+                        "verdict": "Not enough evidence",
+                        "score": 0,
+                        "citations": [],
+                        "features": {},
+                        "message": "No factual claims found in input"
+                    }
                 claim_text = claims[0]["normalized"]
                 claim_type = claims[0].get("type", "unknown")
             else:
