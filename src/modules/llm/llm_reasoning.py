@@ -1,25 +1,24 @@
 from dotenv import load_dotenv
+
+from modules.llm.llm_engine_interface import LLMInterface
 load_dotenv(override=True)
 
 from openai import OpenAI
 from modules.llm.llm_reasoning_interface import LLMReasoningInterface
 
 class llm_reasoning(LLMReasoningInterface):
-    def __init__(self, temperature=0.3):
-        self.client = OpenAI()
+    def __init__(self, llm: LLMInterface, temperature=0.3):
+        self.llm = llm.build()
         self.model = "gpt-4o-mini"
-        self.temperature = temperature
+        self.llm.temperature = temperature
 
     def call_llm(self, prompt):
         """Simple wrapper for OpenAI Chat API call."""
-        response = self.client.chat.completions.create(
-            model=self.model,
+        response = self.llm.raw_messages(
             messages=[
                 {"role": "system", "content": "You are a helpful reasoning assistant."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=self.temperature,
-            max_tokens=1000
         )
         return response.choices[0].message.content.strip()
 
