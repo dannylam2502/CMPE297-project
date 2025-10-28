@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
+from typing import List
 import ollama
 from modules.llm.llm_engine_interface import *
 
 class llm_ollama(LLMInterface):
-    def __init__(self):
-        self.role = "user"
+    def __init__(self, role="user", model="llama3.1"):
+        self.role = role
+        self.model = model
         self._ensure_ollama_running()
 
     def _ensure_ollama_running(self):
@@ -18,12 +20,18 @@ class llm_ollama(LLMInterface):
             import time
             time.sleep(3)
 
-    def message(self, message: str) -> str:
-        return self.message_raw(message).message.content
+    def raw_messages(self, messages: List) -> ollama.ChatResponse:
+        return ollama.chat(model=self.model, messages=messages)
     
-    def message_raw(self, message: str) -> ollama.ChatResponse:
-        return ollama.chat(model="llama3.1", messages=[{"role":self.role,"content":message}])
+    def message(self, message: str) -> str:
+        return ollama.chat(model=self.model, messages=[{"role":self.role,"content":message}])
     
     def set_role(self, role):
         self.role = role
         return self
+
+    def build():
+        return llm_ollama()
+    
+    def build(self):
+        return llm_ollama(self.role, self.model)
