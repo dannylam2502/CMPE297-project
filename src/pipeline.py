@@ -15,6 +15,7 @@ from modules.misinformation_module.src.embedder import E5Embedder
 from modules.claim_extraction.fact_validator import FactValidator
 from modules.claim_extraction.fact_validator_interface import SourcePassage, FactCheckResult
 from modules.llm.llm_openai import llm_openai
+from modules.llm.llm_ollama import llm_ollama
 from modules.llm.llm_reasoning import llm_reasoning 
 from modules.input_extraction.input_extractor import extract_claim_from_input
 
@@ -44,12 +45,13 @@ class FactCheckingPipeline:
         
         # Initialize LLM
         self.llm = llm_openai()
+        # self.llm = llm_ollama()
         
         # Initialize Fact Validator
         self.fact_validator = FactValidator(self.llm)
         # Initialize Reasoning Engine (if enabled)
         if self.use_reasoning:
-            self.reasoning_engine = llm_reasoning()
+            self.reasoning_engine = llm_reasoning(self.llm)
         
         print(f"Pipeline initialized with collection '{collection_name}'")
         print(f"Reasoning engine: {'enabled' if self.use_reasoning else 'disabled'}")
