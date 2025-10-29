@@ -16,10 +16,12 @@ if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)
     read -r rebuild
     case "$rebuild" in
         [Yy]*)
+            cd src/modules/frontEnd
             echo "Installing frontend dependencies..."
-            npm install --prefix src/modules/frontend
+            npm install
             echo "Building frontend..."
-            npm run build --prefix src/modules/frontend
+            npm run build
+            cd ../../../.. 
             ;;
         *)
             echo "Skipping frontend build"
