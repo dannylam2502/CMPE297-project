@@ -245,7 +245,7 @@ class FactCheckingPipeline:
         
         # Step 1: Extract claim
         try:
-            claim_data = extract_claim_from_input(user_input)
+            claim_data = extract_claim_from_input(self.llm, user_input)
             if isinstance(claim_data, dict) and "claims" in claim_data:
                 claims = claim_data["claims"]
                 if not claims:
