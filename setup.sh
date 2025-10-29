@@ -28,10 +28,12 @@ if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)
             ;;
     esac
 else
+	cd src/modules/frontEnd
     echo "Installing frontend dependencies..."
-    npm install --prefix src/modules/frontend
+    npm install
     echo "Building frontend..."
-    npm run build --prefix src/modules/frontend
+    npm run build
+    cd ../../../.. 
 fi
 
 if [ ! -f .env ]; then
