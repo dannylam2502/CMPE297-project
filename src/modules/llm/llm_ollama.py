@@ -20,7 +20,7 @@ class llm_ollama(LLMInterface):
             import time
             time.sleep(3)
 
-    def raw_messages(self, messages: List) -> ollama.ChatResponse:
+    def raw_messages(self, messages: List) -> str:
         return ollama.chat(model=self.model, messages=messages)
     
     def message(self, message: str) -> str:

@@ -13,14 +13,14 @@ class llm_openai(LLMInterface):
         self.role = role
         self.max_tokens = 1000
     
-    def raw_messages(self, messages: List):
+    def raw_messages(self, messages: List) -> str:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
             temperature=self.temperature,
             max_tokens=self.max_tokens
         )
-        return response
+        return response.choices[0].message.content.strip()
     
     def message(self, message: str) -> str:
         response = self.client.chat.completions.create(

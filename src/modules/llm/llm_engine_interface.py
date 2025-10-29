@@ -11,7 +11,7 @@ class LLMInterface(ABC):
         pass
     
     @abstractmethod
-    def raw_messages(self, message:List) -> any:
+    def raw_messages(self, message:List) -> str:
         pass
 
     def build() -> LLMInterface:

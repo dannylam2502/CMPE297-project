@@ -20,7 +20,7 @@ class llm_reasoning(LLMReasoningInterface):
                 {"role": "user", "content": prompt}
             ],
         )
-        return response.choices[0].message.content.strip()
+        return response
 
     def step_1_understand(self, question):
         prompt = f"""Understand the following problem and describe what is being asked:
