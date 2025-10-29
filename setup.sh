@@ -10,10 +10,12 @@ command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
 echo "Installing Python dependencies..."
 pip install -r requirements.txt --break-system-packages
 
+cd src/modules/frontEnd
 echo "Installing frontend dependencies..."
-npm install --prefix src/modules/frontend
+npm install
 echo "Building frontend..."
-npm run build --prefix src/modules/frontend
+npm run build
+cd ../../../.. 
 
 if [ ! -f .env ]; then
     echo "Creating .env file..."

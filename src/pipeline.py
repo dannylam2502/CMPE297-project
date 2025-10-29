@@ -10,12 +10,14 @@ from datetime import datetime
 from dataclasses import asdict
 
 # Module imports - adjust paths based on actual repo structure
+from modules.claim_extraction.Fact_Validator import FactValidator
+from modules.claim_extraction.NLIModel import NLI_LABELS, NLIModel
+from modules.claim_extraction.Validator_Training_Data import get_training_data
+from modules.llm.llm_ollama import llm_ollama
 from modules.misinformation_module.src.qdrant_db import QdrantDB
 from modules.misinformation_module.src.embedder import E5Embedder
-from modules.claim_extraction.fact_validator import FactValidator
-from modules.claim_extraction.fact_validator_interface import SourcePassage, FactCheckResult
+from modules.claim_extraction.Fact_Validator_Data_models import SourcePassage, FactCheckResult
 from modules.llm.llm_openai import llm_openai
-from modules.llm.llm_ollama import llm_ollama
 from modules.llm.llm_reasoning import llm_reasoning 
 from modules.input_extraction.input_extractor import extract_claim_from_input
 
@@ -44,11 +46,18 @@ class FactCheckingPipeline:
         self.vector_db.reset_collection()
         
         # Initialize LLM
-        self.llm = llm_openai()
-        # self.llm = llm_ollama()
+        # self.llm = llm_openai()
+        self.llm = llm_ollama()
         
         # Initialize Fact Validator
-        self.fact_validator = FactValidator(self.llm)
+        nli = NLIModel(
+            emb_model_name="sentence-transformers/all-mpnet-base-v2",
+            nli_model_name="roberta-large-mnli",
+            nli_labels=NLI_LABELS
+        )
+        # self.fact_validator = FactValidator(self.llm, nli, get_training_data())
+        self.fact_validator = FactValidator(self.llm, nli)
+
         # Initialize Reasoning Engine (if enabled)
         if self.use_reasoning:
             self.reasoning_engine = llm_reasoning(self.llm)
