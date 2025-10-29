@@ -8,7 +8,7 @@ command -v node >/dev/null 2>&1 || { echo "Node.js required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
 
 echo "Checking Python dependencies..."
-pip install -q -r requirements.txt --break-system-packages
+pip install -r requirements.txt --break-system-packages 2>&1 | grep -v "Requirement already satisfied" || true
 
 # Check if frontend build already exists
 if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)" ]; then
@@ -16,24 +16,20 @@ if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)
     read -r rebuild
     case "$rebuild" in
         [Yy]*)
-            cd src/modules/frontEnd
             echo "Installing frontend dependencies..."
-            npm install
+            (cd src/modules/frontend && npm install)
             echo "Building frontend..."
-            npm run build
-            cd ../../../.. 
+            (cd src/modules/frontend && npm run build)
             ;;
         *)
             echo "Skipping frontend build"
             ;;
     esac
 else
-	cd src/modules/frontEnd
     echo "Installing frontend dependencies..."
-    npm install
+    (cd src/modules/frontend && npm install)
     echo "Building frontend..."
-    npm run build
-    cd ../../../.. 
+    (cd src/modules/frontend && npm run build)
 fi
 
 if [ ! -f .env ]; then
@@ -41,18 +37,6 @@ if [ ! -f .env ]; then
     echo "OPENAI_API_KEY=your_key_here" > .env
     echo "EMBEDDING_MODEL=intfloat/e5-small-v2" >> .env
     echo "HF_HOME=./data/models" >> .env
-fi
-
-# Check if embedding model is set, add if missing
-if ! grep -q "^EMBEDDING_MODEL=" .env 2>/dev/null; then
-    echo "EMBEDDING_MODEL=intfloat/e5-small-v2" >> .env
-fi
-
-# Check if HF_HOME is set, add if missing
-if ! grep -q "^HF_HOME=" .env 2>/dev/null; then
-    # Use absolute path to ensure consistency regardless of where script is run from
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-    echo "HF_HOME=${SCRIPT_DIR}/data/models" >> .env
 fi
 
 # Create data subdirectories
