@@ -7,7 +7,7 @@ from modules.llm.llm_ollama import (llm_ollama)
 import numpy as np
 import pytest
 
-from modules.claim_extraction.fact_validator_interface import *
+from modules.claim_extraction.Fact_Validator_Data_models import *
 
 from modules.claim_extraction.fact_validator import (
     FactValidator
