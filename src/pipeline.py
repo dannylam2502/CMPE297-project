@@ -12,7 +12,7 @@ from dataclasses import asdict
 # Module imports - adjust paths based on actual repo structure
 from modules.claim_extraction.Fact_Validator import FactValidator
 from modules.claim_extraction.NLIModel import NLI_LABELS, NLIModel
-from modules.claim_extraction.Validator_Training_Data import get_training_data
+from modules.claim_extraction.training.Validator_Training_Data import get_training_data
 from modules.llm.llm_ollama import llm_ollama
 from modules.misinformation_module.src.qdrant_db import QdrantDB
 from modules.misinformation_module.src.embedder import E5Embedder
@@ -68,8 +68,8 @@ class FactCheckingPipeline:
             nli_model_name="roberta-large-mnli",
             nli_labels=NLI_LABELS
         )
-        # self.fact_validator = FactValidator(self.llm, nli, get_training_data())
-        self.fact_validator = FactValidator(self.llm, nli)
+        self.fact_validator = FactValidator(self.llm, nli, get_training_data())
+        # self.fact_validator = FactValidator(self.llm, nli)
 
         # Initialize Reasoning Engine (if enabled)
         if self.use_reasoning:
