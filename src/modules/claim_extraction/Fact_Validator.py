@@ -277,9 +277,6 @@ class FactValidator:
         # --- Step 2: Generate Training Data ---
         print("\nGenerating training data from raw examples...")
 
-        # [REMOVED] No need to create a new nli or data_gen_validator.
-        # We will use the `validator` passed into the function.
-
         X_train_list = []
         y_labels = []
 
