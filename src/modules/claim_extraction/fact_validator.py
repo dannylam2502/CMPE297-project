@@ -11,7 +11,7 @@ from sklearn.calibration import LabelEncoder
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
-from modules.claim_extraction.Validator_Training_Data import GoldStandardExample
+from modules.claim_extraction.training.Validator_Training_Data import GoldStandardExample
 from modules.llm.llm_engine_interface import LLMInterface
 
 class FactValidator:
@@ -349,7 +349,7 @@ class FactValidator:
         correct_predictions = 0
         for i, test_example in enumerate(test_dataset):
             # Run the full validation pipeline on the validator we just trained
-            result = self.validate_claim(test_example.claim, test_example.passages) # <-- CHANGED
+            result = self.validate_claim(test_example.claim, '', test_example.passages) # <-- CHANGED
             
             expected = test_example.ground_truth_verdict
             predicted = result.verdict
