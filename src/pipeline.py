@@ -1,6 +1,6 @@
 """
 CMPE297 Fact-Checking System - Integration Pipeline
-Connects: Input Extraction → Vector DB → Fact Validation → LLM Response → Output
+Connects: Input Extraction â†’ Vector DB â†’ Fact Validation â†’ LLM Response â†’ Output
 """
 
 import json
@@ -10,11 +10,15 @@ from datetime import datetime
 from dataclasses import asdict
 
 # Module imports - adjust paths based on actual repo structure
+from modules.claim_extraction.Fact_Validator import FactValidator
+from modules.claim_extraction.NLIModel import NLI_LABELS, NLIModel
+from modules.claim_extraction.training.Validator_Training_Data import get_training_data
+from modules.llm.llm_ollama import llm_ollama
 from modules.misinformation_module.src.qdrant_db import QdrantDB
 from modules.misinformation_module.src.embedder import E5Embedder
-from modules.claim_extraction.fact_validator import FactValidator
-from modules.claim_extraction.fact_validator_interface import SourcePassage, FactCheckResult
+from modules.claim_extraction.Fact_Validator_Data_models import SourcePassage, FactCheckResult
 from modules.llm.llm_openai import llm_openai
+from modules.llm.llm_reasoning import llm_reasoning 
 from modules.input_extraction.input_extractor import extract_claim_from_input
 
 
@@ -27,25 +31,84 @@ class FactCheckingPipeline:
         self,
         collection_name: str = "facts_collection",
         vector_size: int = 384,
-        qdrant_location: str = ":memory:",
-        embedding_model: str = "intfloat/e5-small-v2"
+        qdrant_location: str = None,
+        embedding_model: str = None,
+        use_reasoning: bool = True,
+        llm_provider: str = None
     ):
-        # Initialize Vector DB
+        if llm_provider is None:
+            raise ValueError("llm_provider must be specified")
+        
+        if qdrant_location is None:
+            raise ValueError("qdrant_location must be specified")
+        
+        if embedding_model is None:
+            embedding_model = os.environ.get('EMBEDDING_MODEL', 'intfloat/e5-small-v2')
+        
+        self.use_reasoning = use_reasoning
+        self.qdrant_location = qdrant_location  # Store for metadata path
         self.embedder = E5Embedder(embedding_model, normalize=True)
         self.vector_db = QdrantDB(
             collection=collection_name,
             vector_size=vector_size,
             location=qdrant_location
         )
-        self.vector_db.reset_collection()
+        self.vector_db.ensure_collection()
         
-        # Initialize LLM
-        self.llm = llm_openai()
+        if llm_provider.lower() == "ollama":
+            self.llm = llm_ollama()
+        elif llm_provider.lower() == "openai":
+            self.llm = llm_openai()
+        else:
+            raise ValueError(f"Unknown LLM provider: {llm_provider}. Use 'openai' or 'ollama'")
         
         # Initialize Fact Validator
-        self.fact_validator = FactValidator(self.llm)
+        nli = NLIModel(
+            emb_model_name="sentence-transformers/all-mpnet-base-v2",
+            nli_model_name="roberta-large-mnli",
+            nli_labels=NLI_LABELS
+        )
+        self.fact_validator = FactValidator(self.llm, nli, get_training_data())
+        # self.fact_validator = FactValidator(self.llm, nli)
+
+        # Initialize Reasoning Engine (if enabled)
+        if self.use_reasoning:
+            self.reasoning_engine = llm_reasoning(self.llm)
         
-        print(f"Pipeline initialized with collection '{collection_name}'")
+        print(f"Pipeline initialized:")
+        print(f"  Collection: '{collection_name}'")
+        print(f"  LLM: {llm_provider}")
+        print(f"  Reasoning: {'enabled' if self.use_reasoning else 'disabled'}")
+    
+    def compute_source_hash(self, data_path: str) -> str:
+        """Compute SHA256 hash of source file"""
+        import hashlib
+        with open(data_path, 'rb') as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    
+    def save_metadata(self, source_path: str, source_hash: str) -> None:
+        """Save metadata about loaded knowledge base"""
+        from pathlib import Path
+        metadata = {
+            "source_file": os.path.basename(source_path),
+            "source_hash": source_hash,
+            "embedding_model": os.environ.get('EMBEDDING_MODEL', 'intfloat/e5-small-v2'),
+            "vector_size": self.vector_db.vector_size,
+            "loaded_at": datetime.now().isoformat()
+        }
+        metadata_path = Path(self.qdrant_location) / 'metadata.json'
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+    
+    def load_metadata(self) -> Dict[str, Any]:
+        """Load metadata about knowledge base"""
+        from pathlib import Path
+        metadata_path = Path(self.qdrant_location) / 'metadata.json'
+        if metadata_path.exists():
+            with open(metadata_path, 'r') as f:
+                return json.load(f)
+        return {}
     
     def load_knowledge_base(self, data_path: str) -> None:
         """
@@ -55,12 +118,36 @@ class FactCheckingPipeline:
             data_path: Path to JSON file with format:
                 [{"id": int, "claim": str, "source": str, "confidence": float}, ...]
         """
+        print(f"Loading source data from {os.path.basename(data_path)}...")
         with open(data_path, 'r') as f:
             data = json.load(f)
         
-        texts = [d["claim"] for d in data]
-        vectors = self.embedder.embed_passages(texts)
+        print(f"Processing {len(data)} claims...")
         
+        # Batch embedding with progress
+        texts = [d["claim"] for d in data]
+        batch_size = 1000
+        vectors = []
+        
+        try:
+            from tqdm import tqdm
+            with tqdm(total=len(texts), desc="Embedding claims", unit="claims") as pbar:
+                for i in range(0, len(texts), batch_size):
+                    batch = texts[i:i + batch_size]
+                    batch_vectors = self.embedder.embed_passages(batch)
+                    vectors.extend(batch_vectors)
+                    pbar.update(len(batch))
+        except ImportError:
+            # Fallback without tqdm
+            print("Embedding claims (install tqdm for progress bar)...")
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i + batch_size]
+                batch_vectors = self.embedder.embed_passages(batch)
+                vectors.extend(batch_vectors)
+                if (i // batch_size) % 10 == 0:
+                    print(f"  Progress: {i}/{len(texts)} claims embedded")
+        
+        print("Inserting into vector database...")
         from qdrant_client import models
         points = []
         for row, vec in zip(data, vectors):
@@ -76,8 +163,27 @@ class FactCheckingPipeline:
                 )
             )
         
-        self.vector_db.upsert_points(points)
-        print(f"Loaded {len(points)} entries into knowledge base")
+        # Batch insert with progress
+        insert_batch_size = 100
+        try:
+            from tqdm import tqdm
+            with tqdm(total=len(points), desc="Inserting vectors", unit="vectors") as pbar:
+                for i in range(0, len(points), insert_batch_size):
+                    batch = points[i:i + insert_batch_size]
+                    self.vector_db.upsert_points(batch)
+                    pbar.update(len(batch))
+        except ImportError:
+            for i in range(0, len(points), insert_batch_size):
+                batch = points[i:i + insert_batch_size]
+                self.vector_db.upsert_points(batch)
+                if (i // insert_batch_size) % 100 == 0:
+                    print(f"  Progress: {i}/{len(points)} vectors inserted")
+        
+        print(f"✓ Loaded {len(points)} entries into knowledge base")
+        
+        # Save metadata
+        source_hash = self.compute_source_hash(data_path)
+        self.save_metadata(data_path, source_hash)
     
     def retrieve_evidence(self, query: str, top_k: int = 20) -> List[SourcePassage]:
         """
@@ -139,11 +245,18 @@ class FactCheckingPipeline:
         
         # Step 1: Extract claim
         try:
-            claim_data = extract_claim_from_input(user_input)
+            claim_data = extract_claim_from_input(self.llm, user_input)
             if isinstance(claim_data, dict) and "claims" in claim_data:
                 claims = claim_data["claims"]
                 if not claims:
-                    return {...}  # Keep existing error handling
+                    return {
+                        "claim": user_input,
+                        "verdict": "Not enough evidence",
+                        "score": 0,
+                        "citations": [],
+                        "features": {},
+                        "message": "No factual claims found in input"
+                    }
                 claim_text = claims[0]["normalized"]
                 claim_type = claims[0].get("type", "unknown")
             else:
@@ -214,8 +327,8 @@ class FactCheckingPipeline:
             Formatted string for display
         """
         verdict_emoji = {
-            "Supported": "✓",
-            "Refuted": "✗",
+            "Supported": "âœ“",
+            "Refuted": "âœ—",
             "Contested": "~",
             "Not enough evidence": "?"
         }
@@ -241,28 +354,45 @@ Citations:
         return output.strip()
 
     def generate_explanation(self, result: FactCheckResult) -> str:
-        """Optional: Add reasoning explanation after fact check"""
-        # Format fact check result into prompt
-        prompt = f"""
-    Explain this fact-check verdict concisely:
+        """Generate explanation using Akshay's multi-step reasoning"""
+        if not self.use_reasoning:
+            # Simple fallback
+            prompt = f"Explain this verdict: {result.claim} is {result.verdict} (score: {result.score}/100)"
+            return self.llm.message(prompt)
+        
+        # Use Akshay's reasoning agent
+        question = f"""Analyze this fact-check result:
+        Claim: {result.claim}
+        Verdict: {result.verdict}
+        Score: {result.score}/100
+        Citations: {chr(10).join(c.snippet[:100] for c in result.citations[:2])}
 
-    Claim: {result.claim}
-    Verdict: {result.verdict}
-    Score: {result.score}/100
-
-    Supporting Evidence:
-    {chr(10).join(f"- {c.snippet}" for c in result.citations[:2])}
-
-    Provide 2-3 sentence explanation.
-    """
-        return self.llm.message(prompt)
+        Explain why this verdict was reached."""
+        
+        return self.reasoning_engine.reasoning_agent(question)
 
 def main():
     """
     Demo/test of the full pipeline.
     """
-    # Initialize pipeline
-    pipeline = FactCheckingPipeline()
+    # Initialize pipeline with required parameters
+    from pathlib import Path
+    import os
+    from dotenv import load_dotenv
+    
+    # Load environment
+    load_dotenv()
+    
+    # Compute paths relative to project root
+    project_root = Path(__file__).parent
+    qdrant_path = str(project_root / "data" / "qdrant")
+    
+    llm_provider = os.environ.get('LLM_PROVIDER', 'openai')
+    
+    pipeline = FactCheckingPipeline(
+        qdrant_location=qdrant_path,
+        llm_provider=llm_provider
+    )
     
     # Load knowledge base (assumes data/mock.json exists)
     knowledge_path = "data/mock.json"
@@ -273,7 +403,7 @@ def main():
         print("Creating minimal test data...")
         test_data = [
             {"id": 1, "claim": "The Moon landing occurred in 1969", "source": "https://nasa.gov", "confidence": 1.0},
-            {"id": 2, "claim": "Water boils at 100°C at sea level", "source": "https://physics.edu", "confidence": 1.0},
+            {"id": 2, "claim": "Water boils at 100Â°C at sea level", "source": "https://physics.edu", "confidence": 1.0},
             {"id": 3, "claim": "The Earth is approximately 4.5 billion years old", "source": "https://science.org", "confidence": 1.0}
         ]
         # Would need to save and load in real scenario

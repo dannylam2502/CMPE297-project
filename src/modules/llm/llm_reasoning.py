@@ -1,27 +1,20 @@
 from dotenv import load_dotenv
+from modules.llm.llm_engine_interface import LLMInterface
 load_dotenv(override=True)
 
-from openai import OpenAI
 from modules.llm.llm_reasoning_interface import LLMReasoningInterface
 
 class llm_reasoning(LLMReasoningInterface):
-    def __init__(self, temperature=0.3):
-        self.client = OpenAI()
-        self.model = "gpt-4o-mini"
-        self.temperature = temperature
+    def __init__(self, llm: LLMInterface):
+        self.llm = llm.build()
 
     def call_llm(self, prompt):
-        """Simple wrapper for OpenAI Chat API call."""
-        response = self.client.chat.completions.create(
-            model=self.model,
+        return self.llm.raw_messages(
             messages=[
                 {"role": "system", "content": "You are a helpful reasoning assistant."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=self.temperature,
-            max_tokens=1000
-        )
-        return response.choices[0].message.content.strip()
+        ).strip()
 
     def step_1_understand(self, question):
         prompt = f"""Understand the following problem and describe what is being asked:
@@ -132,13 +125,11 @@ Is this answer correct? If not, explain the mistake. If yes, justify it.
         }
 
     def reasoning_agent(self, question):
-        """Main reasoning loop"""
         understanding = self.step_1_understand(question)
         decomposition = self.step_2_decompose(understanding)
         solutions = self.step_3_solve_each(decomposition)
         final = self.step_4_combine(solutions)
         verification = self.step_5_verify(final, question)
-        
         # Extract components and create the result dictionary
         result = self.extract_components(verification, final, solutions)
         
@@ -150,3 +141,4 @@ Is this answer correct? If not, explain the mistake. If yes, justify it.
         result["verification"] = verification
         
         return result
+

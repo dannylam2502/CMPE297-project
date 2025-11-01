@@ -9,6 +9,8 @@ import os
 import json
 import re
 
+from modules.llm.llm_engine_interface import LLMInterface
+
 try:
     import openai
 except ImportError:
@@ -95,12 +97,8 @@ Return a **strict JSON** that matches the SCHEMA below. Do not add commentary.
 - Only return **one cleaned claim** in the output (`claims[0]`).
 """
 
-def call_openai_to_structure(text: str) -> str:
+def call_to_structure(llm: LLMInterface, text: str) -> str:
     """Call OpenAI API to extract structured claim"""
-    from pathlib import Path
-    env_path = Path(__file__).parent.parent.parent.parent / ".env"
-    load_dotenv(env_path)
-    
     system_msg = (
         "You are a strict JSON formatter. Convert user text into the JSON schema provided. "
         "Do not add any extra fields or commentary."
@@ -108,6 +106,10 @@ def call_openai_to_structure(text: str) -> str:
     user_msg = f"{SCHEMA_INSTRUCTIONS}\n\nUser input:\n\"\"\"\n{text}\n\"\"\""
     
     try:
+        resp = llm.raw_messages([
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ])
         resp = openai.responses.create(
             model=MODEL_NAME,
             input=[
@@ -119,7 +121,7 @@ def call_openai_to_structure(text: str) -> str:
     except Exception as e:
         raise RuntimeError(f"OpenAI API error: {e}")
     
-    return resp.output_text
+    return resp
 
 def extract_json_from_text(text: str) -> dict:
     """Extract JSON from potentially markdown-wrapped response"""
@@ -134,7 +136,7 @@ def extract_json_from_text(text: str) -> dict:
                 pass
     return None
 
-def extract_claim_from_input(user_input: str) -> dict:
+def extract_claim_from_input(llm: LLMInterface, user_input: str) -> dict:
     """
     Extract structured claim from user input.
     
@@ -144,7 +146,7 @@ def extract_claim_from_input(user_input: str) -> dict:
     Returns:
         Dict with Danny's full schema structure
     """
-    response_text = call_openai_to_structure(user_input)
+    response_text = call_to_structure(llm, user_input)
     structured = extract_json_from_text(response_text)
     
     if structured is None:

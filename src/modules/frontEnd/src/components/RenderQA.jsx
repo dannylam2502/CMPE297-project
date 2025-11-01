@@ -67,10 +67,10 @@ const FeatureDisplay = ({ features }) => {
     <Space direction="vertical" style={{ width: '100%' }} size="small">
       <Text strong>Evidence Analysis:</Text>
       <div style={{ paddingLeft: '16px' }}>
-        <Text>• Max Entailment: <Text code>{features.entail_max?.toFixed(2) || 'N/A'}</Text></Text><br />
-        <Text>• Max Contradiction: <Text code>{features.contradict_max?.toFixed(2) || 'N/A'}</Text></Text><br />
-        <Text>• Agreeing Domains: <Text code>{features.agree_domain_count || 0}</Text></Text><br />
-        <Text>• Avg Reliability: <Text code>{features.reliability_avg?.toFixed(2) || 'N/A'}</Text></Text>
+        <Text>â€¢ Max Entailment: <Text code>{features.entail_max?.toFixed(2) || 'N/A'}</Text></Text><br />
+        <Text>â€¢ Max Contradiction: <Text code>{features.contradict_max?.toFixed(2) || 'N/A'}</Text></Text><br />
+        <Text>â€¢ Agreeing Domains: <Text code>{features.agree_domain_count || 0}</Text></Text><br />
+        <Text>â€¢ Avg Reliability: <Text code>{features.reliability_avg?.toFixed(2) || 'N/A'}</Text></Text>
       </div>
     </Space>
   );
@@ -214,11 +214,6 @@ const RenderQA = ({ conversation, isLoading }) => {
           <AnswerCard answer={entry.answer} />
         </div>
       ))}
-      {isLoading && (
-        <Card>
-          <Spin tip="Processing your claim..." />
-        </Card>
-      )}
     </div>
   );
 };

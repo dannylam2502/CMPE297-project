@@ -1,14 +1,10 @@
 # ------------------------------------
 # 1. PYTHON VIRTUAL ENVIRONMENT
 # ------------------------------------
-# Ignores the main virtual environment directory
 .venv/
 venv/
 env/
 */.venv/
-
-# Ignore the virtual environment you named '.' in the project root
-# based on your previous commands: python -m venv .
 /Include/
 /Lib/
 /Scripts/
@@ -17,12 +13,9 @@ pyvenv.cfg
 # ------------------------------------
 # 2. PYTHON COMPILED FILES & CACHE
 # ------------------------------------
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Temporary files created by the interpreter
 *.egg-info/
 .mypy_cache/
 .pytest_cache/
@@ -32,58 +25,56 @@ __pycache__/
 # ------------------------------------
 # 3. ENVIRONMENT AND SECRETS
 # ------------------------------------
-# Environment variables file - CRITICAL for security
 .env
+.env.local
+.env.*.local
 
 # ------------------------------------
 # 4. OPERATING SYSTEM & EDITOR FILES
 # ------------------------------------
-# VS Code files
 .vscode/
-
-# Thumbs.db, desktop.ini, etc. (Windows)
+.DS_Store
+.AppleDouble
+.LSOverride
 Thumbs.db
 desktop.ini
-
-# Logs and database files
 *.log
 *.sqlite
 
 # ------------------------------------
 # 5. DATA FILES & GENERATED CONTENT
 # ------------------------------------
-# Data directory - keep structure, ignore large data files
+# Centralized data directory
 data/*.json
-data/*.arrow
-data/fever_dataset/
+data/models/**            # Embedding models
+data/qdrant/**            # Vector database
+data/cache/**             # General cache
+data/checkpoints/**       # Model checkpoints
 !data/.gitkeep
 !data/__init__.py
+!data/mock.json           # Keep small test data
 
-# Vector database storage
-qdrant_data/
-src/qdrant_data/
-*.db
 
 # ------------------------------------
-# 6. NODE.JS / FRONTEND
+# 6. DEBUG & TESTING
 # ------------------------------------
-# Dependencies
+debug/
+*.debug
+*.test.py
+test_outputs/
+outputs/
+
+# ------------------------------------
+# 7. NODE.JS / FRONTEND
+# ------------------------------------
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 package-lock.json
-
-# Build output
 build/
 dist/
 src/modules/frontend/build/
-src/modules/frontEnd/build/
+src/modules/frontEnd/public/
+src/modules/frontEnd/node_modules/
 *.tsbuildinfo
-
-# ------------------------------------
-# 7. EXCEPTION: YOUR PYTHON FILE
-# ------------------------------------
-# This file is explicitly tracked by default because it is not ignored.
-# You do NOT need a special line for it:
-# chatbot.py.env
