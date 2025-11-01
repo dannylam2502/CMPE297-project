@@ -8,6 +8,7 @@ Extracts structured, verifiable claims from user input.
 import os
 import json
 import re
+import modules.input_extraction.input_normalizer as input_normalizer
 
 from modules.llm.llm_engine_interface import LLMInterface
 
@@ -136,29 +137,71 @@ def extract_json_from_text(text: str) -> dict:
                 pass
     return None
 
-def extract_claim_from_input(llm: LLMInterface, user_input: str) -> dict:
+def extract_claim_from_input(
+    llm: LLMInterface,
+    user_input: str,
+    *,
+    preclean: bool | None = None,
+    tz: str = "America/Los_Angeles",
+) -> dict:
     """
     Extract structured claim from user input.
-    
+
     Args:
-        user_input: Raw user query
-        
+        user_input: Raw user text (expected single claim)
+        preclean:  If True, apply OCR/ASR normalization before prompting.
+                   If None, read from env PRE_CLEAN (default False).
+        tz:        Timezone hint for downstream normalization (if you later add it to the prompt)
+
     Returns:
-        Dict with Danny's full schema structure
+        Dict matching your schema (with 'original_input' attached)
     """
-    response_text = call_to_structure(llm, user_input)
+    # Decide pre-cleaning via param or env
+    if preclean is None:
+        preclean = os.getenv("PRE_CLEAN", "0").strip() in {"1", "true", "True", "yes", "Y"}
+
+    original_input = user_input
+    cleaned_input = input_normalizer.normalize_ocr_asr(user_input) if preclean else user_input
+
+    response_text = call_to_structure(llm, cleaned_input)
     structured = extract_json_from_text(response_text)
-    
+
     if structured is None:
-        # Fallback
+        # Fallback minimal structure
         return {
+            "doc_meta": {
+                "language": "en",
+                "source_type": "post",
+                "extraction_quality_note": "LLM JSON parse failed; fallback.",
+            },
             "claims": [{
                 "id": "C1",
-                "normalized": user_input,
-                "type": "unknown"
+                "text_span": original_input,
+                "normalized": cleaned_input,
+                "type": "unknown",
+                "topic": "other",
+                "temporal": {"when_text": None, "when_iso": None},
+                "quantity": {"value_text": None, "value_num": None, "unit": None},
+                "stance": "uncertain",
+                "modality_hedges": [],
+                "evidence_cues": {"urls": [], "quoted_sources": [], "media_mentions": [], "numbers_in_text": []},
+                "sensitivity": {"domain": ["other"], "harm_risk": "low"},
+                "verifiability": {"is_checkable": False, "best_evidence_types": []},
+                "attribution": {"speaker": None, "speaker_type": None},
+                "context": {"surrounding_sentence": None, "thread_relation": "original"}
             }],
-            "original_input": user_input
+            "non_claim_spans": [],
+            "original_input": original_input
         }
-    
-    structured.setdefault("original_input", user_input)
+
+    # Attach helpful metadata & provenance
+    structured.setdefault("doc_meta", {})
+    note_bits = []
+    if preclean:
+        note_bits.append("preclean: on")
+    if note_bits:
+        prev = structured["doc_meta"].get("extraction_quality_note", "")
+        structured["doc_meta"]["extraction_quality_note"] = (prev + ("; " if prev else "") + ", ".join(note_bits))
+
+    structured.setdefault("original_input", original_input)
     return structured
