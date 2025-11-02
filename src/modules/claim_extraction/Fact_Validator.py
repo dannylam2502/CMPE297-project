@@ -7,10 +7,13 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, List, Tuple
 
-from sklearn.calibration import LabelEncoder
+# [!] IMPORT CHANGES
+from sklearn.preprocessing import LabelEncoder  # <-- Corrected import
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier # <-- NEW
+# from sklearn.tree import DecisionTreeClassifier # <-- REMOVED
+
 from modules.claim_extraction.training.Validator_Training_Data import GoldStandardExample
 from modules.llm.llm_engine_interface import LLMInterface
 
@@ -35,7 +38,7 @@ class FactValidator:
         self.related_gate = 0.60 # Relevance threshold
         self.agree_cut = 0.60    # Entailment threshold
         self.contra_cut = 0.60   # Contradiction threshold
-        self.clf = None
+        self.clf = None # [!] This will be a RandomForestClassifier
         self.encoder = encoder
         self.model_path = model_path
         if training_data:
@@ -69,8 +72,8 @@ class FactValidator:
 
     def _calculate_final_score_and_verdict(self, features: 'FactCheckFeatures', num_agree: int, num_disagree: int, len_valid_results: int, len_passages: int) -> Tuple[VerdictType, int]:
         """
-        Uses the trained Decision Tree to predict the verdict AND
-        calculate a confidence score based on the tree's output probabilities.
+        Uses the trained Random Forest to predict the verdict AND
+        calculate a confidence score based on the model's output probabilities.
         """
         if not self.clf or not self.encoder:
             raise ValueError("Classifier or Encoder not provided. Cannot predict.")
@@ -84,25 +87,22 @@ class FactValidator:
             len_passages
         )
 
-        # 2. Get the probabilities for ALL classes (e.g., [[0.1, 0.05, 0.8, 0.05]])
+        # 2. Get the probabilities for ALL classes
         all_probabilities = self.clf.predict_proba(X_input)
         
-        # 3. Get the probabilities for our single input (e.g., [0.1, 0.05, 0.8, 0.05])
+        # 3. Get the probabilities for our single input
         class_probabilities = all_probabilities[0]
         
-        # 4. Find the highest probability in the list (e.g., 0.8)
-        #    This is our confidence.
+        # 4. Find the highest probability (confidence)
         confidence = np.max(class_probabilities)
         
-        # 5. Find the INDEX of the highest probability (e.g., 2)
-        #    This is our predicted numeric label.
+        # 5. Find the INDEX of the highest probability
         predicted_numeric_label = np.argmax(class_probabilities)
         
-        # 6. Decode the numeric label back to the string verdict (e.g., "Refuted")
+        # 6. Decode the numeric label back to the string verdict
         verdict: VerdictType = self.encoder.inverse_transform([predicted_numeric_label])[0]
         
-        # 7. Convert the confidence (a float from 0.0 to 1.0)
-        #    to an integer score (from 0 to 100).
+        # 7. Convert confidence (0.0-1.0) to an integer score (0-100)
         score = int(confidence * 100)
         
         return verdict, score
@@ -158,7 +158,7 @@ class FactValidator:
 
         if not related_passages:
             features = FactCheckFeatures(0, 0, 0, 0, 0, 0)
-            return FactCheckResult(claim, "Not enough evidence", -1, [], features)
+            return FactCheckResult(claim, "Not enough evidence", 0, [], features) # Score 0
 
         # 2. Get NLI results
         passage_contents = [p.content for p in related_passages]
@@ -178,8 +178,10 @@ class FactValidator:
         len_valid_results = len(valid_results)
         
         if not valid_results:
-            features = FactCheckFeatures(0, 0, 0, 0, 0, 0)
-            return FactCheckResult(claim, "Not enough evidence", -1, [], features)
+            # We found passages, but they were all neutral.
+            # We can calculate features from *all* results to show *why* it was NEI.
+            features = self._calculate_features(all_results) 
+            return FactCheckResult(claim, "Not enough evidence", 25, [], features) # Score 25
 
         # 5. Get counts
         num_agree = sum(1 for r in valid_results if r.entail_prob > self.agree_cut)
@@ -188,7 +190,7 @@ class FactValidator:
         # 6. Calculate features
         features = self._calculate_features(valid_results)
 
-        # 7. Get final verdict (using the decision tree)
+        # 7. Get final verdict (using the classifier)
         verdict, score = self._calculate_final_score_and_verdict(
             features, num_agree, num_disagree, len_valid_results, len_passages
         )
@@ -221,11 +223,12 @@ class FactValidator:
             ))
         
         # 4. Filter valid results
-        valid_results = [r for r in all_results if r.entail_prob > 0.3 or r.contradict_prob > 0.3]
+        # [!] BUG FIX: Changed from 0.3 to 0.5 to match validate_claim
+        valid_results = [r for r in all_results if r.entail_prob > 0.5 or r.contradict_prob > 0.5]
         len_valid_results = len(valid_results)
         
         if not valid_results:
-            features = FactCheckFeatures(0, 0, 0, 0, 0, 0)
+            features = self._calculate_features(all_results)
             return features, 0, 0, 0, len_passages # Return len_passages
 
         # 5. Get counts
@@ -313,10 +316,15 @@ class FactValidator:
         print(f"\nEncoded labels: {y_train}")
         print(f"Encoder classes: {encoder.classes_}")
 
-        # 2. Train the Decision Tree Classifier
-        clf = DecisionTreeClassifier(random_state=42, max_depth=5)
+        # 2. [!] TRAIN RANDOM FOREST CLASSIFIER
+        clf = RandomForestClassifier(
+            random_state=42, 
+            n_estimators=100,     # Use 100 "mini-trees"
+            min_samples_leaf=3,   # Prevents 100% scores and overfitting
+            max_depth=10          # Prevents trees from getting too deep
+        )
         clf.fit(X_train, y_train)
-        print("\n--- Decision Tree Classifier Trained ---")
+        print("\n--- Random Forest Classifier Trained ---")
 
         # --- [!] NEW: Step 3.5: Save models to disk ---
         if self.model_path:
@@ -334,8 +342,6 @@ class FactValidator:
         # This is the key part: we modify the validator instance directly.
         self.clf = clf
         self.encoder = encoder
-
-        # [REMOVED] No need to create a separate `production_validator`
 
         # --- Step 5: Test the New Validator and Collect Results ---
         print("\n--- Testing the *newly trained* validator on UNSEEN test data ---")
