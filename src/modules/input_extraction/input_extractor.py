@@ -110,14 +110,6 @@ def call_to_structure(llm: LLMInterface, text: str) -> str:
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg},
             ])
-        resp = openai.responses.create(
-            model=MODEL_NAME,
-            input=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_msg},
-            ],
-            temperature=0.0
-        )
     except Exception as e:
         raise RuntimeError(f"OpenAI API error: {e}")
     
