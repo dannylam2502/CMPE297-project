@@ -245,7 +245,9 @@ class FactCheckingPipeline:
         
         # Step 1: Extract claim
         try:
+            print("Extracting claim from user input...")
             claim_data = extract_claim_from_input(self.llm, user_input)
+            print("Extracted claim data:", claim_data)
             if isinstance(claim_data, dict) and "claims" in claim_data:
                 claims = claim_data["claims"]
                 if not claims:
@@ -268,7 +270,9 @@ class FactCheckingPipeline:
             claim_type = "unknown"
         
         # Step 2: Retrieve evidence
+        print("Retrieving evidence from knowledge base...")
         passages = self.retrieve_evidence(claim_text, top_k=20)
+        print(f"Retrieved {len(passages)} passages")
         
         if not passages:
             return {
@@ -281,11 +285,13 @@ class FactCheckingPipeline:
             }
         
         # Step 3: Fact validation
+        print("Validating claim against evidence...")
         result: FactCheckResult = self.fact_validator.validate_claim(
             claim=claim_text,
             claim_type=claim_type,
             passages=passages
         )
+        print(f"Validation result: Verdict={result.verdict}, Score={result.score}")
         
         # Step 4: Format response
         response = {
