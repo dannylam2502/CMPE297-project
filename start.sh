@@ -8,7 +8,7 @@ BACKEND_PID=$!
 
 # Start frontend (go back to root first)
 cd ../src/modules/frontend
-npx serve -s build -l 3001 &
+npx serve -s build -l 3000 &
 FRONTEND_PID=$!
 
 trap "kill $BACKEND_PID $FRONTEND_PID" EXIT
