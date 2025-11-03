@@ -130,15 +130,5 @@ Is this answer correct? If not, explain the mistake. If yes, justify it.
         solutions = self.step_3_solve_each(decomposition)
         final = self.step_4_combine(solutions)
         verification = self.step_5_verify(final, question)
-        # Extract components and create the result dictionary
-        result = self.extract_components(verification, final, solutions)
-        
-        # Include the full reasoning for reference
-        result["understanding"] = understanding
-        result["decomposition"] = decomposition
-        result["solutions"] = solutions
-        result["final"] = final
-        result["verification"] = verification
-        
-        return result
-
+        #explanation = self.extract_components(verification, final, solutions)
+        return final
