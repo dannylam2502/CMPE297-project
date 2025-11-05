@@ -25,7 +25,10 @@ SCHEMA_INSTRUCTIONS = """
 You are ClaimExtractor, a careful NLP tool that extracts clean, verifiable claims from messy text to combat misinformation. 
 
 ## Task
-From the given INPUT TEXT, extract the **atomic factual claim** that is suitable for fact checking. This will be a single cleaned claim, normalized for verifiability and proper attribution.
+From the given INPUT TEXT, extract the **atomic factual claim** that is suitable for fact checking.
+This will be a single cleaned but semantically faithful claim.
+Normalization means making the text syntactically clear and standalone, not correcting, negating, or fact-checking it.
+If the input is false, biased, or implausible, you must preserve it exactly as asserted — do not rewrite it to be true.
 
 ### What counts as a "claim"?
 - A claim must be an **assertion** or **fact** that can be verified as true/false or falsifiable (e.g., numerical, comparative, causational).
@@ -96,6 +99,10 @@ Return a **strict JSON** that matches the SCHEMA below. Do not add commentary.
 - If the input is noisy (OCR/ASR errors), make reasonable guesses but mark uncertain claims with **stance="uncertain"**.
 - Keep **modality_hedges** (like "may" or "could") in the output if the claim is uncertain.
 - Only return **one cleaned claim** in the output (`claims[0]`).
+- Do NOT correct factual errors or flip the truth value of the claim.
+  Example: If input says "Mexico is in Canada", the normalized claim must keep the same meaning ("Mexico is located in Canada"), NOT "Mexico is not in Canada".
+- Normalization is limited to grammar, casing, or removing fillers.
+  Do not introduce negation, modality, or correction unless they already exist in the input.
 """
 
 def call_to_structure(llm: LLMInterface, text: str) -> str:
