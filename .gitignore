@@ -2,79 +2,44 @@
 # 1. PYTHON VIRTUAL ENVIRONMENT
 # ------------------------------------
 .venv/
-venv/
-env/
-*/.venv/
-/Include/
-/Lib/
-/Scripts/
-pyvenv.cfg
 
 # ------------------------------------
 # 2. PYTHON COMPILED FILES & CACHE
 # ------------------------------------
 __pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
-.ipynb_checkpoints/
 
 # ------------------------------------
 # 3. ENVIRONMENT AND SECRETS
 # ------------------------------------
 .env
-.env.local
-.env.*.local
 
 # ------------------------------------
 # 4. OPERATING SYSTEM & EDITOR FILES
 # ------------------------------------
-.vscode/
 .DS_Store
-.AppleDouble
-.LSOverride
-Thumbs.db
-desktop.ini
-*.log
-*.sqlite
 
 # ------------------------------------
 # 5. DATA FILES & GENERATED CONTENT
 # ------------------------------------
-# Centralized data directory
-data/*.json
-data/models/**            # Embedding models
-data/qdrant/**            # Vector database
-data/cache/**             # General cache
-data/checkpoints/**       # Model checkpoints
-!data/.gitkeep
-!data/__init__.py
-!data/mock.json           # Keep small test data
-
+data/
+!data/load_fever.py
+!data/mock.json
 
 # ------------------------------------
 # 6. DEBUG & TESTING
 # ------------------------------------
 debug/
-*.debug
-*.test.py
-test_outputs/
-outputs/
 
 # ------------------------------------
 # 7. NODE.JS / FRONTEND
 # ------------------------------------
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-package-lock.json
-build/
-dist/
 src/modules/frontend/build/
-src/modules/frontEnd/public/
-src/modules/frontEnd/node_modules/
-*.tsbuildinfo
+src/modules/frontend/public/
+src/modules/frontend/server/
+src/modules/frontend/node_modules/
+
+# ------------------------------------
+# 8. LARGE BINARY FILES & DATASETS
+# ------------------------------------
+fact_validator_models.joblib
+src/fact_validator_models.joblib

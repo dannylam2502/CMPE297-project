@@ -13,6 +13,11 @@ ollama>=0.1.0
 qdrant-client>=1.9.0
 sentence-transformers>=3.0.0
 torch>=2.1.0
+tensorflow>=2.16.0
+tf-keras
+
+# Datasets
+datasets==3.6.0
 
 # Progress bars
 tqdm>=4.66.0
