@@ -16,11 +16,12 @@ class SourcePassage:
         self.relevance_score = relevance_score
         self.title = title
         self.published_at = published_at
+@dataclass
 class Citation:
     def __init__(self, passage):
         self.passage = passage
 @dataclass
-class ClaimCheckResult:
+class CitationValidationScoring(Citation):
     passage: SourcePassage
     entail_prob: float = 0.0
     contradict_prob: float = 0.0
@@ -41,5 +42,5 @@ class FactCheckResult:
     claim: str
     verdict: VerdictType
     score: int
-    citations: List[Citation]
+    citations: List[CitationValidationScoring]
     features: FactCheckFeatures

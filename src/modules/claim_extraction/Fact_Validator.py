@@ -2,7 +2,7 @@ import os
 from typing import List
 import joblib
 from sklearn.model_selection import train_test_split
-from modules.claim_extraction.Fact_Validator_Data_models import Citation, ClaimCheckResult, FactCheckFeatures, FactCheckResult, ModelInterface, SourcePassage, VerdictType
+from modules.claim_extraction.Fact_Validator_Data_models import Citation, CitationValidationScoring, FactCheckFeatures, FactCheckResult, ModelInterface, SourcePassage, VerdictType
 import numpy as np
 from datetime import datetime
 from typing import Dict, List, Tuple
@@ -125,7 +125,7 @@ class FactValidator:
             return (0.8, True)
         return (0.3, True)
 
-    def _calculate_features(self, valid_results: List[ClaimCheckResult]) -> FactCheckFeatures:
+    def _calculate_features(self, valid_results: List[CitationValidationScoring]) -> FactCheckFeatures:
         if not valid_results:
             return FactCheckFeatures(0, 0, 0, 0, 0, 0)
 
@@ -145,9 +145,9 @@ class FactValidator:
             contest_score = entail_max * contradict_max
         )
 
-    def _get_top_citations(self, valid_results: List[ClaimCheckResult], num_agree: int, num_disagree: int) -> List[Citation]:
+    def _get_top_citations(self, valid_results: List[CitationValidationScoring], num_agree: int, num_disagree: int) -> List[Citation]:
         sorted_results = sorted(valid_results, key=lambda r: r.passage.relevance_score, reverse=True)
-        return [Citation(passage=r.passage) for r in sorted_results[:3]]
+        return [r for r in sorted_results[:3]]
     
     # --- MAIN VALIDATION & GENERATION LOGIC ---
     
@@ -168,7 +168,7 @@ class FactValidator:
         all_results = []
         for passage, (e, c, n) in zip(related_passages, nli_results):
             recency_w, date_ok = self._calculate_recency(passage.published_at)
-            all_results.append(ClaimCheckResult(
+            all_results.append(CitationValidationScoring(
                 passage=passage, entail_prob=e, contradict_prob=c, neutral_prob=n,
                 recency_weight=recency_w, numeric_date_ok=date_ok
             ))
@@ -217,7 +217,7 @@ class FactValidator:
         all_results = []
         for passage, (e, c, n) in zip(related_passages, nli_results):
             recency_w, date_ok = self._calculate_recency(passage.published_at)
-            all_results.append(ClaimCheckResult(
+            all_results.append(CitationValidationScoring(
                 passage=passage, entail_prob=e, contradict_prob=c, neutral_prob=n,
                 recency_weight=recency_w, numeric_date_ok=date_ok
             ))
