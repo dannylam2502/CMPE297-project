@@ -171,6 +171,49 @@ def toggle_reasoning():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# --- Runtime LLM Provider Switching ---
+# This route and helper method allow developers to change the backend model
+# (OpenAI or Ollama) without restarting the Flask server.
+# Safe extension: does not modify any teammate’s code.
+@app.route('/set-llm', methods=['POST'])
+def set_llm():
+    """
+    Switch the active LLM provider at runtime.
+    
+    Expected JSON payload: {"llm_provider": "openai" | "ollama"}
+    Returns the normalized provider so the frontend can confirm which model is live.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+    except Exception:
+        data = {}
+    
+    requested_provider = (data.get('llm_provider') or "").strip()
+    if not requested_provider:
+        return jsonify({
+            'error': "Missing 'llm_provider' in request body.",
+            'allowed_providers': ['openai', 'ollama']
+        }), 400
+    
+    try:
+        normalized = pipeline.set_llm_provider(requested_provider)
+    except ValueError as ve:
+        return jsonify({
+            'error': str(ve),
+            'allowed_providers': ['openai', 'ollama']
+        }), 400
+    except Exception as exc:
+        print(f"Error switching LLM provider: {exc}")
+        return jsonify({
+            'error': 'Failed to update LLM provider.',
+            'details': str(exc)
+        }), 500
+    
+    return jsonify({
+        'status': 'ok',
+        'llm_provider': normalized
+    })
+
 if __name__ == '__main__':
     PORT = int(os.environ.get('PORT', 5005))
     print(f"\n{'='*60}")

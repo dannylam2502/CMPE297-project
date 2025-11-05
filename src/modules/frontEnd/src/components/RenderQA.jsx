@@ -1,8 +1,8 @@
 import React from 'react';
 import { Card, Typography, Space, Divider, Spin, Badge, Collapse, List } from 'antd';
-import { 
-  CheckCircleOutlined, 
-  CloseCircleOutlined, 
+import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
   QuestionCircleOutlined,
   ExclamationCircleOutlined,
   LinkOutlined
@@ -13,7 +13,7 @@ const { Panel } = Collapse;
 
 const VerdictIcon = ({ verdict }) => {
   const iconProps = { style: { fontSize: '20px' } };
-  
+
   switch (verdict) {
     case 'Supported':
       return <CheckCircleOutlined style={{ ...iconProps.style, color: '#52c41a' }} />;
@@ -30,7 +30,7 @@ const VerdictIcon = ({ verdict }) => {
 
 const VerdictBadge = ({ verdict, score }) => {
   let color = 'default';
-  
+
   switch (verdict) {
     case 'Supported':
       color = 'success';
@@ -53,8 +53,8 @@ const VerdictBadge = ({ verdict, score }) => {
       count={`${score}/100`}
       style={{
         backgroundColor: color === 'success' ? '#52c41a' :
-                        color === 'error' ? '#ff4d4f' :
-                        color === 'warning' ? '#faad14' : '#8c8c8c'
+          color === 'error' ? '#ff4d4f' :
+            color === 'warning' ? '#faad14' : '#8c8c8c'
       }}
     />
   );
@@ -131,6 +131,9 @@ const AnswerCard = ({ answer }) => {
   const explanation = answer.explanation || 'No explanation available';
   const citations = answer.citations || [];
   const features = answer.features || null;
+  const llmResponse = typeof answer.llm_response === 'string' && answer.llm_response.trim().length > 0
+    ? answer.llm_response
+    : null;
 
   return (
     <Card
@@ -162,12 +165,21 @@ const AnswerCard = ({ answer }) => {
           </Paragraph>
         </div>
 
-        {/* Features (collapsible) */}
-        {features && (
-          <Collapse ghost>
-            <Panel header="View Evidence Analysis" key="1">
-              <FeatureDisplay features={features} />
-            </Panel>
+        {/* Model Response + Evidence panels (collapsible) */}
+        {(llmResponse || features) && (
+          <Collapse ghost style={{ marginBottom: '3rem' }}>
+            {llmResponse && (
+              <Panel header="Model Response" key="model-response">
+                <Paragraph style={{ marginBottom: 0 }}>
+                  {llmResponse}
+                </Paragraph>
+              </Panel>
+            )}
+            {features && (
+              <Panel header="View Evidence Analysis" key="evidence-analysis">
+                <FeatureDisplay features={features} />
+              </Panel>
+            )}
           </Collapse>
         )}
 

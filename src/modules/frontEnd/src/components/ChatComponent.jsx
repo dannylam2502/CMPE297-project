@@ -4,7 +4,13 @@ import { SendOutlined } from '@ant-design/icons';
 
 const { TextArea } = Input;
 
-const ChatComponent = ({ handleResp, addQuestion, isLoading, setIsLoading }) => {
+const ChatComponent = ({
+  handleResp,
+  addQuestion,
+  isLoading,
+  setIsLoading,
+  selectedLLM,
+}) => {
   const [question, setQuestion] = useState('');
 
   const handleSubmit = async () => {
@@ -27,7 +33,10 @@ const ChatComponent = ({ handleResp, addQuestion, isLoading, setIsLoading }) => 
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ question: currentQuestion }),
+        body: JSON.stringify({
+          question: currentQuestion,
+          llm: selectedLLM,
+        }),
       });
 
       if (!response.ok) {
