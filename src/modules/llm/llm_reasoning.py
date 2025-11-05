@@ -62,11 +62,73 @@ Is this answer correct? If not, explain the mistake. If yes, justify it.
 """
         return self.call_llm(prompt)
 
+    def extract_components(self, verification, final, solutions):
+        """
+        Extract verdict, score, features, and citations from the verification result.
+        Returns a dictionary with these components.
+        """
+        # Extract verdict (True/False/Inconclusive)
+        if "correct" in verification.lower() and "yes" in verification.lower():
+            verdict = True
+        elif "not correct" in verification.lower() or "incorrect" in verification.lower():
+            verdict = False
+        else:
+            verdict = "Inconclusive"
+        
+        # Calculate a confidence score (0-1)
+        if verdict is True:
+            confidence_indicators = ["definitely", "certainly", "absolutely", "clearly", "strongly"]
+            score = 0.8  # Default high score for correct answers
+            for indicator in confidence_indicators:
+                if indicator in verification.lower():
+                    score = min(1.0, score + 0.05)  # Boost score but cap at 1.0
+        elif verdict is False:
+            score = 0.2  # Default low score for incorrect answers
+        else:
+            score = 0.5  # Neutral score for inconclusive results
+        
+        # Extract features (key points from the reasoning)
+        features = []
+        # Extract from solutions (more detailed reasoning)
+        solution_points = solutions.split("\n")
+        for point in solution_points:
+            if point.strip() and len(point.strip()) > 20:  # Non-empty and reasonably detailed
+                features.append(point.strip())
+        
+        # Limit to most relevant features (max 5)
+        features = features[:5]
+        
+        # Extract potential citations
+        citations = []
+        potential_citations = []
+        
+        # Look for patterns like "According to X" or "X states that"
+        for section in [verification, final, solutions]:
+            lines = section.split("\n")
+            for line in lines:
+                if "according to" in line.lower() or "states that" in line.lower() or "cited" in line.lower() or "reference" in line.lower():
+                    potential_citations.append(line)
+        
+        # Process potential citations to extract the actual citation
+        for citation in potential_citations:
+            if len(citation) > 10:  # Reasonably sized citation
+                citations.append(citation)
+        
+        # Limit to top citations (max 3)
+        citations = citations[:3]
+        
+        return {
+            "verdict": verdict,
+            "score": round(score, 2),
+            "features": features,
+            "citations": citations
+        }
+
     def reasoning_agent(self, question):
         understanding = self.step_1_understand(question)
         decomposition = self.step_2_decompose(understanding)
         solutions = self.step_3_solve_each(decomposition)
         final = self.step_4_combine(solutions)
         verification = self.step_5_verify(final, question)
-        
-        return verification
+        #explanation = self.extract_components(verification, final, solutions)
+        return final

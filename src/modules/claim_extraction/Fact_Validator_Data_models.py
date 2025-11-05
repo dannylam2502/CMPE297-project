@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Literal
-
+from typing import Tuple
 
 VerdictType = Literal["Supported", "Refuted", "Not enough evidence", "Contested"]
 class ModelInterface:
