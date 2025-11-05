@@ -7,8 +7,16 @@ command -v python3 >/dev/null 2>&1 || { echo "Python 3 required"; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "Node.js required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
 
+if [ ! -d ".venv" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv .venv
+fi
+
+echo "Activating virtual environment..."
+. .venv/bin/activate
+
 echo "Checking Python dependencies..."
-pip install -r requirements.txt --break-system-packages 2>&1 | grep -v "Requirement already satisfied" || true
+pip install -r requirements.txt 2>&1 | grep -v "Requirement already satisfied" || true
 
 # Check if frontend build already exists
 if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)" ]; then
@@ -18,7 +26,9 @@ if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)
         [Yy]*)
             echo "Installing frontend dependencies..."
             (cd src/modules/frontend && npm install)
+            (cd src/modules/frontend && npm install)
             echo "Building frontend..."
+            (cd src/modules/frontend && npm run build)
             (cd src/modules/frontend && npm run build)
             ;;
         *)
@@ -28,7 +38,9 @@ if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)
 else
     echo "Installing frontend dependencies..."
     (cd src/modules/frontend && npm install)
+    (cd src/modules/frontend && npm install)
     echo "Building frontend..."
+    (cd src/modules/frontend && npm run build)
     (cd src/modules/frontend && npm run build)
 fi
 
