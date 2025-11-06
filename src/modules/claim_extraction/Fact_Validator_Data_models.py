@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Literal
+from typing import List, Literal, Tuple
 
 
 VerdictType = Literal["Supported", "Refuted", "Not enough evidence", "Contested"]

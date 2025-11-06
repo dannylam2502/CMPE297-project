@@ -3,6 +3,9 @@ set -e
 
 echo "=== Fact-Checking System Setup ==="
 
+# -------------------------------------------------------------
+# REQUIREMENTS
+# -------------------------------------------------------------
 command -v python3 >/dev/null 2>&1 || { echo "Python 3 required"; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "Node.js required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
@@ -10,7 +13,9 @@ command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
 echo "Checking Python dependencies..."
 pip install -r requirements.txt --break-system-packages 2>&1 | grep -v "Requirement already satisfied" || true
 
-# Check if frontend build already exists
+# -------------------------------------------------------------
+# FRONTEND BUILD
+# -------------------------------------------------------------
 if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)" ]; then
     printf "Frontend build exists. Rebuild? (y/n): "
     read -r rebuild
@@ -32,6 +37,9 @@ else
     (cd src/modules/frontend && npm run build)
 fi
 
+# -------------------------------------------------------------
+# ENV FILE SETUP
+# -------------------------------------------------------------
 if [ ! -f .env ]; then
     echo "Creating .env file..."
     echo "OPENAI_API_KEY=your_key_here" > .env
@@ -39,13 +47,14 @@ if [ ! -f .env ]; then
     echo "HF_HOME=./data/models" >> .env
 fi
 
-# Create data subdirectories
-mkdir -p data/models
-mkdir -p data/qdrant
-mkdir -p data/cache
-mkdir -p data/checkpoints
+# -------------------------------------------------------------
+# DIRECTORIES
+# -------------------------------------------------------------
+mkdir -p data/models data/qdrant data/cache data/checkpoints
 
-# Check if LLM provider already set
+# -------------------------------------------------------------
+# LLM PROVIDER SELECTION
+# -------------------------------------------------------------
 if grep -q "^LLM_PROVIDER=" .env 2>/dev/null; then
     current_provider=$(grep "^LLM_PROVIDER=" .env | cut -d'=' -f2)
     echo ""
@@ -64,11 +73,11 @@ if [ "$ask_llm" = true ]; then
     echo ""
     echo "Select LLM provider:"
     echo "  1. OpenAI (gpt-4o-mini)"
-    echo "  2. Ollama (llama3.1, local)"
+    echo "  2. Ollama (mistral, local)"
     printf "Choice [1-2]: "
     read -r llm_choice
 
-    # Remove existing LLM_PROVIDER line if present
+    # Remove existing line
     sed -i.bak '/^LLM_PROVIDER=/d' .env 2>/dev/null || true
 
     case "$llm_choice" in
@@ -79,9 +88,8 @@ if [ "$ask_llm" = true ]; then
             ;;
         2)
             echo "LLM_PROVIDER=ollama" >> .env
-            echo "Selected: Ollama"
+            echo "Selected: Ollama (Mistral)"
             
-            # Check if ollama is installed
             if ! command -v ollama >/dev/null 2>&1; then
                 echo "Error: ollama not found. Install from https://ollama.com"
                 echo "Defaulting to OpenAI instead"
@@ -89,29 +97,27 @@ if [ "$ask_llm" = true ]; then
                 exit 1
             fi
             
-            # Start ollama service if not running
-            echo "Checking ollama service..."
+            echo "Checking Ollama service..."
             if ! ollama list >/dev/null 2>&1; then
-                echo "Starting ollama service..."
+                echo "Starting Ollama service..."
                 ollama serve >/dev/null 2>&1 &
                 sleep 3
             fi
-            
-            # Check if llama3.1 model exists
-            if ollama list | grep -q "llama3.1"; then
-                echo "Model llama3.1 already installed"
+
+            # Pull Mistral model
+            if ollama list | grep -q "mistral"; then
+                echo "Model mistral already installed"
             else
-                echo "Pulling llama3.1 model (this may take several minutes)..."
-                ollama pull llama3.1
+                echo "Pulling mistral model (this may take several minutes)..."
+                ollama pull mistral
                 echo "Model download complete"
             fi
-            
-            # Verify model is available
-            if ! ollama list | grep -q "llama3.1"; then
-                echo "Error: Failed to install llama3.1 model"
+
+            if ! ollama list | grep -q "mistral"; then
+                echo "Error: Failed to install mistral model"
                 exit 1
             fi
-            
+
             echo "Ollama setup complete"
             ;;
         *)
@@ -121,48 +127,45 @@ if [ "$ask_llm" = true ]; then
     esac
 fi
 
-# Verify existing provider setup (runs whether provider changed or not)
+# -------------------------------------------------------------
+# VERIFY PROVIDER SETUP
+# -------------------------------------------------------------
 if grep -q "^LLM_PROVIDER=" .env 2>/dev/null; then
     CURRENT_PROVIDER=$(grep "^LLM_PROVIDER=" .env | cut -d'=' -f2)
     
     if [ "$CURRENT_PROVIDER" = "ollama" ]; then
         echo ""
         echo "Verifying Ollama setup..."
-        
-        # Check if ollama is installed
         if ! command -v ollama >/dev/null 2>&1; then
             echo "Error: ollama not found but LLM_PROVIDER=ollama"
-            echo "Install from https://ollama.com or run setup again to switch to OpenAI"
+            echo "Install from https://ollama.com or rerun setup to switch providers"
             exit 1
         fi
-        
-        # Start ollama service if not running
+
         if ! ollama list >/dev/null 2>&1; then
-            echo "Starting ollama service..."
+            echo "Starting Ollama service..."
             ollama serve >/dev/null 2>&1 &
             sleep 3
         fi
-        
-        # Check if llama3.1 model exists
-        if ollama list | grep -q "llama3.1"; then
-            echo "âœ“ Ollama service running"
-            echo "âœ“ Model llama3.1 installed"
+
+        if ollama list | grep -q "mistral"; then
+            echo "✓ Ollama service running"
+            echo "✓ Model mistral installed"
         else
-            echo "Model llama3.1 not found. Pulling now..."
-            ollama pull llama3.1
-            if ollama list | grep -q "llama3.1"; then
-                echo "âœ“ Model llama3.1 installed"
+            echo "Model mistral not found. Pulling now..."
+            ollama pull mistral
+            if ollama list | grep -q "mistral"; then
+                echo "✓ Model mistral installed"
             else
-                echo "Error: Failed to install llama3.1 model"
+                echo "Error: Failed to install mistral model"
                 exit 1
             fi
         fi
-        
     elif [ "$CURRENT_PROVIDER" = "openai" ]; then
         echo ""
         echo "Verifying OpenAI setup..."
         if grep -q "^OPENAI_API_KEY=sk-" .env 2>/dev/null; then
-            echo "âœ“ OpenAI API key configured"
+            echo "✓ OpenAI API key configured"
         else
             echo "Warning: OPENAI_API_KEY not set or invalid"
             echo "Edit .env and set: OPENAI_API_KEY=sk-your-key-here"
@@ -170,6 +173,9 @@ if grep -q "^LLM_PROVIDER=" .env 2>/dev/null; then
     fi
 fi
 
+# -------------------------------------------------------------
+# EMBEDDINGS MODEL CHECK
+# -------------------------------------------------------------
 echo ""
 echo "Checking embeddings model cache..."
 EMBEDDING_MODEL=$(grep "^EMBEDDING_MODEL=" .env | cut -d'=' -f2)
@@ -184,6 +190,9 @@ else
     echo "Download complete"
 fi
 
+# -------------------------------------------------------------
+# OPTIONAL FEVER DATASET
+# -------------------------------------------------------------
 printf "Download FEVER dataset? (y/n): "
 read -r reply
 case "$reply" in

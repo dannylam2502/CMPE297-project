@@ -78,3 +78,4 @@ src/modules/frontend/build/
 src/modules/frontEnd/public/
 src/modules/frontEnd/node_modules/
 *.tsbuildinfo
+data/qdrant/

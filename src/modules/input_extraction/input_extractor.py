@@ -104,24 +104,26 @@ def call_to_structure(llm: LLMInterface, text: str) -> str:
         "Do not add any extra fields or commentary."
     )
     user_msg = f"{SCHEMA_INSTRUCTIONS}\n\nUser input:\n\"\"\"\n{text}\n\"\"\""
-    
+
     try:
         resp = llm.raw_messages([
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_msg},
-            ])
-        resp = openai.responses.create(
-            model=MODEL_NAME,
-            input=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_msg},
-            ],
-            temperature=0.0
-        )
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg},
+        ])
+
+        # Handle OpenAI response object safely
+        if hasattr(resp, "output_text"):
+            return resp.output_text
+        elif hasattr(resp, "choices"):
+            # Handle typical OpenAI responses
+            return resp.choices[0].message.get("content", "")
+        elif isinstance(resp, str):
+            return resp
+        else:
+            return str(resp)
+
     except Exception as e:
         raise RuntimeError(f"OpenAI API error: {e}")
-    
-    return resp
 
 def extract_json_from_text(text: str) -> dict:
     """Extract JSON from potentially markdown-wrapped response"""
@@ -139,16 +141,17 @@ def extract_json_from_text(text: str) -> dict:
 def extract_claim_from_input(llm: LLMInterface, user_input: str) -> dict:
     """
     Extract structured claim from user input.
-    
-    Args:
-        user_input: Raw user query
-        
-    Returns:
-        Dict with Danny's full schema structure
     """
     response_text = call_to_structure(llm, user_input)
+
+    # Ensure we always have a plain string
+    if hasattr(response_text, "content"):
+        response_text = response_text.content
+    elif not isinstance(response_text, str):
+        response_text = str(response_text)
+
     structured = extract_json_from_text(response_text)
-    
+
     if structured is None:
         # Fallback
         return {
@@ -159,6 +162,6 @@ def extract_claim_from_input(llm: LLMInterface, user_input: str) -> dict:
             }],
             "original_input": user_input
         }
-    
+
     structured.setdefault("original_input", user_input)
     return structured
