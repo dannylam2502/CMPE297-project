@@ -1,6 +1,8 @@
 import React from "react";
 import { Select, Space, Typography } from "antd";
 
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5005";
+
 const { Text } = Typography;
 
 // Keep this list in lockstep with the Flask /set-llm backend.
@@ -49,7 +51,9 @@ const LLMSelector = ({ selectedLLM, onChange, disabled }) => {
     if (!selectedOption) return;
 
     try {
-      const response = await fetch("http://localhost:5005/set-llm", {
+
+      const response = await fetch(`${API_URL}/set-llm`, {
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ llm_provider: selectedOption.provider }),
