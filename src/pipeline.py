@@ -48,11 +48,8 @@ class FactCheckingPipeline:
         self.use_reasoning = use_reasoning
         self.qdrant_location = qdrant_location  # Store for metadata path
         self.embedder = E5Embedder(embedding_model, normalize=True)
-        self.vector_db = QdrantDB(
-            collection=collection_name,
-            vector_size=vector_size,
-            location=qdrant_location
-        )
+        self.vector_db = QdrantDB(collection="nba_claims", vector_size=384, location=qdrant_location)
+
         self.vector_db.ensure_collection()
         
         if llm_provider.lower() == "ollama":

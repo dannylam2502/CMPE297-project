@@ -3,6 +3,9 @@ set -e
 
 echo "=== Fact-Checking System Setup ==="
 
+# -------------------------------------------------------------
+# REQUIREMENTS
+# -------------------------------------------------------------
 command -v python3 >/dev/null 2>&1 || { echo "Python 3 required"; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "Node.js required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
@@ -18,7 +21,9 @@ echo "Activating virtual environment..."
 echo "Checking Python dependencies..."
 pip install -r requirements.txt 2>&1 | grep -v "Requirement already satisfied" || true
 
-# Check if frontend build already exists
+# -------------------------------------------------------------
+# FRONTEND BUILD
+# -------------------------------------------------------------
 if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)" ]; then
     printf "Frontend build exists. Rebuild? (y/n): "
     read -r rebuild
@@ -26,9 +31,7 @@ if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)
         [Yy]*)
             echo "Installing frontend dependencies..."
             (cd src/modules/frontend && npm install)
-            (cd src/modules/frontend && npm install)
             echo "Building frontend..."
-            (cd src/modules/frontend && npm run build)
             (cd src/modules/frontend && npm run build)
             ;;
         *)
@@ -38,12 +41,13 @@ if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)
 else
     echo "Installing frontend dependencies..."
     (cd src/modules/frontend && npm install)
-    (cd src/modules/frontend && npm install)
     echo "Building frontend..."
-    (cd src/modules/frontend && npm run build)
     (cd src/modules/frontend && npm run build)
 fi
 
+# -------------------------------------------------------------
+# ENV FILE SETUP
+# -------------------------------------------------------------
 if [ ! -f .env ]; then
     echo "Creating .env file..."
     echo "OPENAI_API_KEY=your_key_here" > .env
@@ -51,13 +55,14 @@ if [ ! -f .env ]; then
     echo "HF_HOME=./data/models" >> .env
 fi
 
-# Create data subdirectories
-mkdir -p data/models
-mkdir -p data/qdrant
-mkdir -p data/cache
-mkdir -p data/checkpoints
+# -------------------------------------------------------------
+# DIRECTORIES
+# -------------------------------------------------------------
+mkdir -p data/models data/qdrant data/cache data/checkpoints
 
-# Check if LLM provider already set
+# -------------------------------------------------------------
+# LLM PROVIDER SELECTION
+# -------------------------------------------------------------
 if grep -q "^LLM_PROVIDER=" .env 2>/dev/null; then
     current_provider=$(grep "^LLM_PROVIDER=" .env | cut -d'=' -f2)
     echo ""
@@ -133,7 +138,9 @@ if [ "$ask_llm" = true ]; then
     esac
 fi
 
-# Verify existing provider setup (runs whether provider changed or not)
+# -------------------------------------------------------------
+# VERIFY PROVIDER SETUP
+# -------------------------------------------------------------
 if grep -q "^LLM_PROVIDER=" .env 2>/dev/null; then
     CURRENT_PROVIDER=$(grep "^LLM_PROVIDER=" .env | cut -d'=' -f2)
     
@@ -182,6 +189,9 @@ if grep -q "^LLM_PROVIDER=" .env 2>/dev/null; then
     fi
 fi
 
+# -------------------------------------------------------------
+# EMBEDDINGS MODEL CHECK
+# -------------------------------------------------------------
 echo ""
 echo "Checking embeddings model cache..."
 EMBEDDING_MODEL=$(grep "^EMBEDDING_MODEL=" .env | cut -d'=' -f2)
@@ -196,6 +206,9 @@ else
     echo "Download complete"
 fi
 
+# -------------------------------------------------------------
+# OPTIONAL FEVER DATASET
+# -------------------------------------------------------------
 printf "Download FEVER dataset? (y/n): "
 read -r reply
 case "$reply" in
