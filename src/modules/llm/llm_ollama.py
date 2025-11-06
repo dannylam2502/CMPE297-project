@@ -5,6 +5,7 @@ from modules.llm.llm_engine_interface import LLMInterface
 
 class llm_ollama(LLMInterface):
     def __init__(self, role="user", model="llama3.1", temperature=0.3):
+    # def __init__(self, role="user", model="llama3.2:3b", temperature=0.3):
         self.role = role
         self.model = model
         self.temperature = temperature

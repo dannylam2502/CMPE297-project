@@ -58,10 +58,17 @@ class QdrantDB:
     def upsert_points(self, points: List[Dict[str, Any]]):
         self.client.upsert(collection_name=self.collection, points=points)
 
-    def search(self, query_vector: list, top_k: int = 3):
-        return self.client.search(
-            collection_name=self.collection,
-            query_vector=query_vector,
-            limit=top_k,
-            with_payload=True
+    def search(self, query_vec, top_k=20, collection=None):
+        if collection:
+            collection_name = collection
+        else:
+            collection_name = self.collection
+
+        results = self.client.search(
+            collection_name=collection_name,
+            query_vector=query_vec,
+            limit=top_k
         )
+        return results
+
+        
