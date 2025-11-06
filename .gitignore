@@ -12,6 +12,9 @@ __pycache__/
 # 3. ENVIRONMENT AND SECRETS
 # ------------------------------------
 .env
+.env.local
+.env.*.local
+.env.bak
 
 # ------------------------------------
 # 4. OPERATING SYSTEM & EDITOR FILES
@@ -22,6 +25,8 @@ __pycache__/
 # 5. DATA FILES & GENERATED CONTENT
 # ------------------------------------
 data/
+!data/qdrant/meta.json
+!data/qdrant/metadata.json
 !data/load_fever.py
 !data/mock.json
 
@@ -42,4 +47,4 @@ src/modules/frontend/node_modules/
 # 8. LARGE BINARY FILES & DATASETS
 # ------------------------------------
 fact_validator_models.joblib
-src/fact_validator_models.joblib
+src/fact_validator_models.joblib4

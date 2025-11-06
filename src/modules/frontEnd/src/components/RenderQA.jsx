@@ -53,7 +53,7 @@ const VerdictBadge = ({ verdict, score }) => {
       count={`${score}/100`}
       style={{
         backgroundColor: color === 'success' ? '#52c41a' :
-          color === 'error' ? '#ddd3d3ff' :
+          color === 'error' ? '#ff4d4f' :
             color === 'warning' ? '#faad14' : '#8c8c8c'
       }}
     />

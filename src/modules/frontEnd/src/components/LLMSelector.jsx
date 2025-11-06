@@ -51,7 +51,9 @@ const LLMSelector = ({ selectedLLM, onChange, disabled }) => {
     if (!selectedOption) return;
 
     try {
+
       const response = await fetch(`${API_URL}/set-llm`, {
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ llm_provider: selectedOption.provider }),

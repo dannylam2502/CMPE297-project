@@ -29,7 +29,7 @@ class FactCheckingPipeline:
     
     def __init__(
         self,
-        collection_name: str = "facts_collection",
+        collection_name: str = "nba_claims",
         vector_size: int = 384,
         qdrant_location: str = None,
         embedding_model: str = None,
@@ -48,11 +48,8 @@ class FactCheckingPipeline:
         self.use_reasoning = use_reasoning
         self.qdrant_location = qdrant_location  # Store for metadata path
         self.embedder = E5Embedder(embedding_model, normalize=True)
-        self.vector_db = QdrantDB(
-            collection=collection_name,
-            vector_size=vector_size,
-            location=qdrant_location
-        )
+        self.vector_db = QdrantDB(collection="nba_claims", vector_size=384, location=qdrant_location)
+
         self.vector_db.ensure_collection()
         
         if llm_provider.lower() == "ollama":
@@ -61,6 +58,7 @@ class FactCheckingPipeline:
             self.llm = llm_openai()
         else:
             raise ValueError(f"Unknown LLM provider: {llm_provider}. Use 'openai' or 'ollama'")
+        self.current_llm_provider = llm_provider.lower()
         
         # Initialize Fact Validator
         nli = NLIModel(
@@ -68,7 +66,7 @@ class FactCheckingPipeline:
             nli_model_name="roberta-large-mnli",
             nli_labels=NLI_LABELS
         )
-        self.fact_validator = FactValidator(self.llm, nli, get_training_data())
+        self.fact_validator = FactValidator(self.llm, nli, training_data=None)  # Skip training
         # self.fact_validator = FactValidator(self.llm, nli)
 
         # Initialize Reasoning Engine (if enabled)
@@ -79,6 +77,39 @@ class FactCheckingPipeline:
         print(f"  Collection: '{collection_name}'")
         print(f"  LLM: {llm_provider}")
         print(f"  Reasoning: {'enabled' if self.use_reasoning else 'disabled'}")
+
+    # --- Runtime LLM Provider Switching ---
+    def set_llm_provider(self, provider: str) -> str:
+        """
+        Reinitialize the pipeline's LLM at runtime.
+        
+        This helper is called by the Flask route `/set-llm` and keeps the startup
+        behavior untouched. It validates the requested provider, rebuilds the LLM
+        instance, refreshes the reasoning engine (if enabled), and returns the
+        normalized provider string so callers can confirm which backend is active.
+        """
+        normalized = (provider or "").strip().lower()
+        allowed = {"openai", "ollama"}
+        if normalized not in allowed:
+            raise ValueError(f"Invalid llm_provider '{provider}'. Allowed values: {sorted(allowed)}")
+        
+        if normalized == "ollama":
+            new_llm = llm_ollama()
+        else:
+            new_llm = llm_openai()
+        
+        self.llm = new_llm
+        self.current_llm_provider = normalized
+        print(f"[DEBUG] Current LLM provider: {self.current_llm_provider}")
+        
+        # Keep the FactValidator and reasoning engine in sync with the refreshed LLM.
+        if hasattr(self, "fact_validator") and self.fact_validator:
+            self.fact_validator.llm = self.llm
+        
+        if self.use_reasoning:
+            self.reasoning_engine = llm_reasoning(self.llm)
+        
+        return self.current_llm_provider
     
     def compute_source_hash(self, data_path: str) -> str:
         """Compute SHA256 hash of source file"""
@@ -244,6 +275,16 @@ class FactCheckingPipeline:
         """
         
         # Step 1: Extract claim
+
+        # Call the currently selected LLM with the raw user text so its response can
+        # be returned alongside the fact-check verdict.
+        llm_response = None
+        try:
+            llm_response = self.llm.message(user_input)
+            preview = (llm_response or "None")[:100]
+            print(f"[process_query] LLM response preview: {preview}")
+        except Exception as llm_error:
+            print(f"LLM call failed: {llm_error}")
         try:
             print("Extracting claim from user input...")
             claim_data = extract_claim_from_input(self.llm, user_input)
@@ -300,10 +341,10 @@ class FactCheckingPipeline:
             "score": result.score,
             "citations": [
                 {
-                    "url": c.url,
-                    "title": c.title,
-                    "published_at": c.published_at.isoformat() if isinstance(c.published_at, datetime) else str(c.published_at),
-                    "snippet": c.snippet
+                    "url": c.passage.url,
+                    "title": c.passage.title,
+                    "published_at": c.passage.published_at.isoformat() if isinstance(c.passage.published_at, datetime) else str(c.passage.published_at),
+                    "snippet": c.passage.content[:200]
                 }
                 for c in result.citations
             ],
@@ -316,7 +357,8 @@ class FactCheckingPipeline:
                 "recency_max": result.features.recency_weight_max
             },
             "raw_result": result,  # For debugging
-            "explanation": self.generate_explanation(result)
+            "explanation": self.generate_explanation(result),
+            "llm_response": llm_response  # Surface direct model output for the UI if needed
 
         }
         
@@ -371,7 +413,7 @@ Citations:
         Claim: {result.claim}
         Verdict: {result.verdict}
         Score: {result.score}/100
-        Citations: {chr(10).join(c.snippet[:100] for c in result.citations[:2])}
+        Citations: {chr(10).join(c.passage.content[:100] for c in result.citations[:2])}
 
         Explain why this verdict was reached."""
         
