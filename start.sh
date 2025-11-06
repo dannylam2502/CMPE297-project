@@ -3,7 +3,7 @@ lsof -ti:5005 | xargs kill -9 2>/dev/null
 
 # Start backend
 cd src
-python server.py &
+python3 server.py &
 BACKEND_PID=$!
 
 # Start frontend (go back to root first)

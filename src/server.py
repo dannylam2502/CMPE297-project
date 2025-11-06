@@ -8,6 +8,7 @@ from flask_cors import CORS
 import sys
 import os
 from pathlib import Path
+from threading import Lock           # Used to prevent race conditions when switching LLMs
 from dotenv import load_dotenv
 
 # Calculate project root - handle both src/server.py and ./server.py locations
@@ -26,6 +27,7 @@ from pipeline import FactCheckingPipeline
 
 app = Flask(__name__)
 CORS(app)
+pipeline_lock = Lock()
 
 # Initialize pipeline once at startup with reasoning enabled
 LLM_PROVIDER = os.environ.get('LLM_PROVIDER')
@@ -88,6 +90,52 @@ if KNOWLEDGE_BASE_PATH.exists():
 else:
     print(f"Error: No knowledge base file found")
 
+
+# ============================================
+# Function: rebuild_pipeline
+# ============================================
+def rebuild_pipeline(new_provider: str) -> bool:
+    """
+    Reinitialize the fact-checking pipeline with a different LLM provider (OpenAI or Ollama).
+    Returns True if switched successfully, False if no change was needed.
+    """
+    global pipeline, LLM_PROVIDER
+
+    # Normalize the incoming LLM name
+    normalized_provider = (new_provider or '').lower()
+    if normalized_provider not in ('openai', 'ollama'):
+        raise ValueError(f"Invalid LLM provider: {new_provider}")
+    
+    # Lock ensures no other process changes pipeline during rebuild
+    with pipeline_lock:
+        try:
+            if hasattr(pipeline, "vector_db") and hasattr(pipeline.vector_db, "client"):
+                pipeline.vector_db.client.close()  # Free older qdrant
+                print("Closed previous Qdrant client.")
+        except Exception as e:
+            print(f"Warning: could not close Qdrant client: {e}")          
+
+        current_provider = (LLM_PROVIDER or '').lower()
+        if normalized_provider == current_provider:
+            print(f"LLM provider already set to '{LLM_PROVIDER}'. No changes made.")
+            return False
+        
+        # Log the provider switch
+        print(f"Switching LLM provider: {LLM_PROVIDER} → {normalized_provider}")
+        print("Reinitializing fact-checking pipeline with requested provider...")
+        current_reasoning = getattr(pipeline, 'use_reasoning', True)
+        new_pipeline = FactCheckingPipeline(
+            use_reasoning=current_reasoning,
+            llm_provider=normalized_provider,
+            qdrant_location=QDRANT_LOCATION
+        )
+
+        # Replace old pipeline with new one
+        pipeline = new_pipeline
+        LLM_PROVIDER = normalized_provider
+        print(f"LLM provider switched successfully to '{LLM_PROVIDER}'.")
+        return True
+
 @app.route('/chat', methods=['GET', 'POST'])
 def chat():
     """
@@ -147,6 +195,55 @@ def chat():
             'citations': [],
             'features': {}
         }), 500
+
+
+# ============================================
+# Route: /set-llm
+# ============================================
+@app.route('/set-llm', methods=['POST'])
+def set_llm():
+    """
+    Endpoint to switch the active LLM provider between OpenAI and Ollama.
+    Called by the frontend dropdown in LLMSelector.jsx.
+    """
+    try:
+         # Read JSON input from frontend
+        data = request.get_json(silent=True) or {}
+        requested_provider = (data.get('llm_provider') or '').lower()
+        
+        # Validate provider name
+        if requested_provider not in ('openai', 'ollama'):
+            return jsonify({
+                'error': 'Invalid llm_provider value',
+                'allowed_providers': ['openai', 'ollama']
+            }), 400
+        
+        # Log the incoming switch request
+        print(f"/set-llm request received: {requested_provider}")
+
+        # Try to rebuild the pipeline with the new provider
+        changed = rebuild_pipeline(requested_provider)
+
+        # Return message depending on whether a change was needed
+        message = (
+            f"LLM provider already set to '{LLM_PROVIDER}'."
+            if not changed else
+            f"LLM provider switched to '{LLM_PROVIDER}'."
+        )
+        
+        # Return response to frontend
+        return jsonify({
+            'status': 'ok',
+            'llm_provider': LLM_PROVIDER,
+            'message': message
+        })
+    
+    except Exception as e:
+        # Handle any unexpected backend errors
+        print(f"Error handling /set-llm request: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health():
