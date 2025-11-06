@@ -1,0 +1,106 @@
+.
+├── .env
+├── .gitignore
+├── .venv
+│   ├── bin
+│   │   ├── Activate.ps1
+│   │   ├── activate
+│   │   ├── activate.csh
+│   │   ├── activate.fish
+│   │   ├── datasets-cli
+│   │   ├── distro
+│   │   ├── dotenv
+│   │   ├── f2py
+│   │   ├── flask
+│   │   ├── get_gprof
+│   │   ├── get_objgraph
+│   │   ├── hf
+│   │   ├── httpx
+│   │   ├── huggingface-cli
+│   │   ├── isympy
+│   │   ├── normalizer
+│   │   ├── numpy-config
+│   │   ├── openai
+│   │   ├── pip
+│   │   ├── pip3
+│   │   ├── pip3.12
+│   │   ├── proton
+│   │   ├── proton-viewer
+│   │   ├── python -> python3
+│   │   ├── python3 -> /usr/bin/python3
+│   │   ├── python3.12 -> python3
+│   │   ├── tiny-agents
+│   │   ├── torchfrtrace
+│   │   ├── torchrun
+│   │   ├── tqdm
+│   │   └── undill
+│   ├── include
+│   │   └── python3.12
+│   ├── lib
+│   │   └── python3.12
+│   ├── lib64 -> lib
+│   ├── pyvenv.cfg
+│   └── share
+│       └── man
+├── LICENSE
+├── PROJECT_PLAN.md
+├── README.md
+├── chatbot.py
+├── data
+│   ├── .gitkeep
+│   ├── __init__.py
+│   ├── fever.json
+│   ├── fever_dataset
+│   │   ├── data-00000-of-00001.arrow
+│   │   ├── dataset_info.json
+│   │   └── state.json
+│   └── mock.json
+├── debug_backend.py
+├── directory_structure.txt
+├── docs
+│   ├── .gitkeep
+│   ├── API_Contract.txt
+│   ├── Adams Module Summary.txt
+│   ├── Danny's User Input Extraction Layer.txt
+│   ├── Fact Checking Module by Samuel Tsao.txt
+│   └── Samuel_tsao_Resume_09_24_2025.docx.pdf
+├── pytest.ini
+├── readme.txt
+├── requirements.txt
+├── setup.sh
+├── src
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── embedder.cpython-313.pyc
+│   │   ├── pipeline.cpython-312.pyc
+│   │   ├── pipeline_demo.cpython-313.pyc
+│   │   └── qdrant_db.cpython-313.pyc
+│   ├── architecture.py
+│   ├── modules
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   ├── claim_extraction
+│   │   ├── frontEnd
+│   │   ├── input_extraction
+│   │   ├── llm
+│   │   └── misinformation_module
+│   ├── pipeline.py
+│   ├── qdrant_data
+│   │   ├── .lock
+│   │   ├── collection
+│   │   └── meta.json
+│   └── server.py
+├── start.sh
+├── test_integration.py
+└── tests
+    ├── integration
+    │   ├── test_end_to_end.py
+    │   └── test_module_connections.py
+    └── unit
+        ├── claim_extraction
+        ├── test_fact_checker.py
+        ├── test_llm_engine.py
+        ├── test_ui_interface.py
+        └── test_vector_database.py
+
+28 directories, 76 files
