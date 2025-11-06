@@ -18,3 +18,4 @@ data/*.joblib
 # Misc
 .env*
 .DS_Store
+data/models/
