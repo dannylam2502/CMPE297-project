@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import ChatComponent from "./components/ChatComponent";
 import RenderQA from "./components/RenderQA";
+import LLMSelector from "./components/LLMSelector";
 import { Layout, Typography, Space, Button } from "antd";
 import { GithubOutlined, ExperimentOutlined } from "@ant-design/icons";
 
@@ -27,10 +28,20 @@ const renderQAStyle = {
   overflowY: "auto",
 };
 
+const controlsStackStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 16,
+  width: "100%",
+};
+
 const App = () => {
   const [conversation, setConversation] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [reasoningEnabled, setReasoningEnabled] = useState(true);
+
+  // Default to OpenAI GPT-4o-Mini to stay consistent with backend `/set-llm`
+  const [selectedLLM, setSelectedLLM] = useState("gpt-4o-mini");
 
   const handleResp = (question, answer) => {
     setConversation((prev) =>
@@ -106,12 +117,20 @@ const App = () => {
       </Content>
 
       <div style={chatComponentStyle}>
-        <ChatComponent
-          handleResp={handleResp}
-          addQuestion={addQuestion}
-          isLoading={isLoading}
-          setIsLoading={setIsLoading}
-        />
+        <div style={controlsStackStyle}>
+          <LLMSelector
+            selectedLLM={selectedLLM}
+            onChange={setSelectedLLM}
+            disabled={isLoading}
+          />
+          <ChatComponent
+            handleResp={handleResp}
+            addQuestion={addQuestion}
+            isLoading={isLoading}
+            setIsLoading={setIsLoading}
+            selectedLLM={selectedLLM}
+          />
+        </div>
       </div>
 
       <Footer
