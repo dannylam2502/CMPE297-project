@@ -61,7 +61,7 @@ pipeline = FactCheckingPipeline(
 # -------------------------------------------------------------------------
 collection_name = "nba_claims"
 try:
-    size = pipeline.vector_db.get_collection_size(collection=collection_name)
+    size = pipeline.vector_db.get_collection_size()
     if size == 0:
         print(f"[⚠] Qdrant collection '{collection_name}' is empty.")
         print(f"    → Run ingestion manually: python src/modules/misinformation_module/src/ingest_nba.py")

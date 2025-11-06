@@ -29,7 +29,7 @@ class FactCheckingPipeline:
     
     def __init__(
         self,
-        collection_name: str = "facts_collection",
+        collection_name: str = "nba_claims",
         vector_size: int = 384,
         qdrant_location: str = None,
         embedding_model: str = None,
@@ -66,7 +66,7 @@ class FactCheckingPipeline:
             nli_model_name="roberta-large-mnli",
             nli_labels=NLI_LABELS
         )
-        self.fact_validator = FactValidator(self.llm, nli, get_training_data())
+        self.fact_validator = FactValidator(self.llm, nli, training_data=None)  # Skip training
         # self.fact_validator = FactValidator(self.llm, nli)
 
         # Initialize Reasoning Engine (if enabled)
@@ -341,10 +341,10 @@ class FactCheckingPipeline:
             "score": result.score,
             "citations": [
                 {
-                    "url": c.url,
-                    "title": c.title,
-                    "published_at": c.published_at.isoformat() if isinstance(c.published_at, datetime) else str(c.published_at),
-                    "snippet": c.snippet
+                    "url": c.passage.url,
+                    "title": c.passage.title,
+                    "published_at": c.passage.published_at.isoformat() if isinstance(c.passage.published_at, datetime) else str(c.passage.published_at),
+                    "snippet": c.passage.content[:200]
                 }
                 for c in result.citations
             ],
@@ -413,7 +413,7 @@ Citations:
         Claim: {result.claim}
         Verdict: {result.verdict}
         Score: {result.score}/100
-        Citations: {chr(10).join(c.snippet[:100] for c in result.citations[:2])}
+        Citations: {chr(10).join(c.passage.content[:100] for c in result.citations[:2])}
 
         Explain why this verdict was reached."""
         

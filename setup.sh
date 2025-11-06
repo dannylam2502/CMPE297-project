@@ -86,7 +86,7 @@ if [ "$ask_llm" = true ]; then
     read -r llm_choice
 
     # Remove existing LLM_PROVIDER line if present
-    sed -i.bak '/^LLM_PROVIDER=/d' .env 2>/dev/null || true
+    sed -i '/^LLM_PROVIDER=/d' .env 2>/dev/null || true
 
     case "$llm_choice" in
         1)
@@ -102,7 +102,7 @@ if [ "$ask_llm" = true ]; then
             if ! command -v ollama >/dev/null 2>&1; then
                 echo "Error: ollama not found. Install from https://ollama.com"
                 echo "Defaulting to OpenAI instead"
-                sed -i.bak 's/LLM_PROVIDER=ollama/LLM_PROVIDER=openai/' .env
+                sed -i 's/LLM_PROVIDER=ollama/LLM_PROVIDER=openai/' .env
                 exit 1
             fi
             
@@ -207,13 +207,10 @@ else
 fi
 
 # -------------------------------------------------------------
-# OPTIONAL FEVER DATASET
+# NBA DATASET
 # -------------------------------------------------------------
-printf "Download FEVER dataset? (y/n): "
-read -r reply
-case "$reply" in
-    [Yy]*) python3 data/load_fever.py ;;
-    *) echo "Skipping dataset download" ;;
-esac
+echo ""
+echo "To generate NBA dataset, run: python data/load_nba_stats.py"
+echo "To ingest into Qdrant, run: python src/modules/misinformation_module/src/ingest_nba.py"
 
 echo "Setup complete. Run ./start.sh to start"

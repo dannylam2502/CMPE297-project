@@ -163,8 +163,7 @@ class FactValidator:
         # 2. Get NLI results
         passage_contents = [p.content for p in related_passages]
         nli_results = self._get_nli_results(claim, passage_contents)
-        print(f"[NLI] Processed {len(nli_results)} passages. Sample scores: {nli_results[:2]}")
-
+        
         # 3. Combine all info
         all_results = []
         for passage, (e, c, n) in zip(related_passages, nli_results):
@@ -176,8 +175,6 @@ class FactValidator:
 
         # 4. Filter valid results (not strongly neutral)
         valid_results = [r for r in all_results if r.entail_prob > 0.5 or r.contradict_prob > 0.5]
-        print(f"[FILTER] {len(valid_results)} valid results from {len(all_results)} total (threshold: entail/contra > 0.5)")
-
         len_valid_results = len(valid_results)
         
         if not valid_results:
@@ -197,8 +194,7 @@ class FactValidator:
         verdict, score = self._calculate_final_score_and_verdict(
             features, num_agree, num_disagree, len_valid_results, len_passages
         )
-        print(f"[VERDICT] {verdict} (score: {score}) | agree={num_agree}, disagree={num_disagree}, features: entail_max={features.entail_max:.2f}, contra_max={features.contradict_max:.2f}")
-
+        
         # 8. Get citations
         citations = self._get_top_citations(valid_results, num_agree, num_disagree)
         
