@@ -1,21 +1,59 @@
 from dotenv import load_dotenv
 from modules.llm.llm_engine_interface import LLMInterface
+import re
+import json
+from openai.types.chat.chat_completion import ChatCompletion, ChatCompletionMessage, Choice
+from openai.types.completion_usage import CompletionUsage, CompletionTokensDetails, PromptTokensDetails
 load_dotenv(override=True)
 
 from modules.llm.llm_reasoning_interface import LLMReasoningInterface
 
 class llm_reasoning(LLMReasoningInterface):
+    
     def __init__(self, llm: LLMInterface):
         self.llm = llm.build()
+        self.system = (
+            "You are a careful step-by-step reasoner. Provide a clear chain of thought along with citations"
+            "with intermediate steps, then output a final ANSWER line. Be concise but explicit."
+        )
+        
 
     def call_llm(self, prompt):
         return self.llm.raw_messages(
             messages=[
-                {"role": "system", "content": "You are a helpful reasoning assistant."},
+                {"role": "system", "content": self.system},
                 {"role": "user", "content": prompt}
             ],
         ).strip()
+    
+    
+     # -------------------------
+# CoT: Chain of Thought
+# -------------------------
+    def chain_of_thought_solve(self,question: str, cot_steps_hint: int = 6, max_tokens: int = 512) -> dict:
+        """
+        Ask the model to produce a chain-of-thought and a final answer .
+        Returns: { "chain": "<long reasoning>", "answer": "<final answer>" }
+        """
+        
+        user = (
+            f"QUESTION: {question}\n\n"
+            f"Produce a step-by-step chain of thought (approx {cot_steps_hint} steps), then at the end provide a final line starting with 'FINAL ANSWER:' followed by the concise answer."
+        )
 
+        text = self.call_llm(user)
+        # Try to split out the final answer
+        ans = None
+        m = re.search(r'FINAL ANSWER[:\s\-]*([^\n]+)', text, flags=re.I)
+        if m:
+            ans = m.group(1).strip()
+        else:
+            # try to find last line as answer
+            lines = [ln.strip() for ln in text.strip().splitlines() if ln.strip()]
+            if lines:
+                ans = lines[-1]
+        return {"chain": text.strip(), "answer": ans}
+    
     def step_1_understand(self, question):
         prompt = f"""Understand the following problem and describe what is being asked:
 
@@ -61,6 +99,7 @@ Answer: {final_answer}
 Is this answer correct? If not, explain the mistake. If yes, justify it.
 """
         return self.call_llm(prompt)
+   
 
     def extract_components(self, verification, final, solutions):
         """
@@ -125,10 +164,15 @@ Is this answer correct? If not, explain the mistake. If yes, justify it.
         }
 
     def reasoning_agent(self, question):
-        understanding = self.step_1_understand(question)
-        decomposition = self.step_2_decompose(understanding)
-        solutions = self.step_3_solve_each(decomposition)
-        final = self.step_4_combine(solutions)
-        verification = self.step_5_verify(final, question)
+        # 1) Chain of Thought
+        print("=== Chain of Thought (CoT) ===")
+        cot = self.chain_of_thought_solve( question, cot_steps_hint=6)
+        return cot["chain"]
+        
+        #understanding = self.step_1_understand(question)
+        #decomposition = self.step_2_decompose(understanding)
+        #solutions = self.step_3_solve_each(decomposition)
+        #final = self.step_4_combine(solutions)
+        #verification = self.step_5_verify(final, question)
         #explanation = self.extract_components(verification, final, solutions)
-        return final
+        #return final
