@@ -60,7 +60,7 @@ class FactValidator:
             features.entail_mean3,
             features.contradict_max,
             features.agree_domain_count,
-            features.releliance_score_avg,
+            features.relevance_score_avg,
             features.recency_weight_max,
             features.contest_score,
             num_agree,
@@ -140,7 +140,7 @@ class FactValidator:
             entail_mean3=np.mean(entail_probs[:3]) if entail_probs else 0.0,
             contradict_max=contradict_max,
             agree_domain_count=len(domains),
-            releliance_score_avg=np.mean([r.passage.relevance_score for r in valid_results]),
+            relevance_score_avg=np.mean([r.passage.relevance_score for r in valid_results]),
             recency_weight_max=max(r.recency_weight for r in valid_results),
             contest_score = entail_max * contradict_max
         )

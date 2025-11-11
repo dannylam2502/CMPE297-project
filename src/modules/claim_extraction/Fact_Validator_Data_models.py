@@ -36,7 +36,7 @@ class FactCheckFeatures:
     entail_mean3: float
     contradict_max: float
     agree_domain_count: int
-    releliance_score_avg: float
+    relevance_score_avg: float
     recency_weight_max: float
     contest_score: float = 0.0
 @dataclass
@@ -44,5 +44,6 @@ class FactCheckResult:
     claim: str
     verdict: VerdictType
     score: int
-    citations: List[CitationValidationScoring]
+    citations: List[CitationValidationScoring]  # Top 3 for frontend
     features: FactCheckFeatures
+    all_evidence: List[CitationValidationScoring] = None  # All valid results for reasoning

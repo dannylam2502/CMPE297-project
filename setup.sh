@@ -206,11 +206,101 @@ else
     echo "Download complete"
 fi
 
+echo ""
+echo "Training fact validator model..."
+if [ ! -f "fact_validator_models.joblib" ]; then
+    python3 -c "from modules.claim_extraction.Fact_Validator import train_model; train_model()"
+    echo "✓ Model trained"
+else
+    echo "Model already exists, skipping training"
+fi
+
 # -------------------------------------------------------------
 # NBA DATASET
 # -------------------------------------------------------------
-echo ""
-echo "To generate NBA dataset, run: python data/load_nba_stats.py"
-echo "To ingest into Qdrant, run: python src/modules/misinformation_module/src/ingest_nba.py"
 
-echo "Setup complete. Run ./start.sh to start"
+echo ""
+echo "Checking NBA dataset..."
+
+NBA_JSON="data/nba.json"
+NBA_CSV="docs/Seasons_Stats.csv"
+
+# Check if CSV source exists
+if [ ! -f "$NBA_CSV" ]; then
+    echo "Error: Source file $NBA_CSV not found"
+    echo "Please add Seasons_Stats.csv to the docs/ directory"
+    exit 1
+fi
+
+# Check if NBA JSON exists
+if [ -f "$NBA_JSON" ]; then
+    echo "NBA dataset exists at $NBA_JSON"
+    printf "Regenerate dataset? (y/n): "
+    read -r regen_nba
+    case "$regen_nba" in
+        [Yy]*)
+            echo "Generating NBA dataset..."
+            python3 data/load_nba_stats.py
+            if [ $? -eq 0 ]; then
+                echo "✓ NBA dataset generated"
+            else
+                echo "Error: Failed to generate NBA dataset"
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Skipping NBA dataset generation"
+            ;;
+    esac
+else
+    echo "NBA dataset not found. Generating..."
+    python3 data/load_nba_stats.py
+    if [ $? -eq 0 ]; then
+        echo "✓ NBA dataset generated"
+    else
+        echo "Error: Failed to generate NBA dataset"
+        exit 1
+    fi
+fi
+
+# -------------------------------------------------------------
+# QDRANT INGESTION
+# -------------------------------------------------------------
+echo ""
+echo "Checking Qdrant database..."
+
+QDRANT_PATH="data/qdrant"
+
+# Check if Qdrant collection exists and has data
+if [ -d "$QDRANT_PATH/collection/nba_claims" ]; then
+    echo "Qdrant collection 'nba_claims' exists"
+    printf "Reingest data? (y/n): "
+    read -r reingest
+    case "$reingest" in
+        [Yy]*)
+            echo "Ingesting NBA data into Qdrant..."
+            python3 src/modules/misinformation_module/src/ingest_nba.py
+            if [ $? -eq 0 ]; then
+                echo "✓ Data ingested into Qdrant"
+            else
+                echo "Error: Failed to ingest data"
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Skipping Qdrant ingestion"
+            ;;
+    esac
+else
+    echo "Qdrant collection not found. Ingesting..."
+    python3 src/modules/misinformation_module/src/ingest_nba.py
+    if [ $? -eq 0 ]; then
+        echo "✓ Data ingested into Qdrant"
+    else
+        echo "Error: Failed to ingest data"
+        exit 1
+    fi
+fi
+
+echo ""
+echo "Setup complete. Run ./start.sh to start the server"

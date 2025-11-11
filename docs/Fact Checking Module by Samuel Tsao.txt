@@ -87,7 +87,7 @@ claim = "The official number of active spacecraft orbiting Earth, as of the begi
     "entail_mean3": 0.88,
     "contradict_max": 0.12,
     "agree_domain_count": 4,
-    "releliance_score_avg": 0.85,
+    "relevance_score_avg": 0.85,
     "recency_weight_max": 1.0
   }
 }
