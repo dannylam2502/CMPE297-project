@@ -353,7 +353,7 @@ class FactCheckingPipeline:
                 "entail_mean3": result.features.entail_mean3,
                 "contradict_max": result.features.contradict_max,
                 "agree_domain_count": result.features.agree_domain_count,
-                "reliability_avg": result.features.releliance_score_avg,
+                "relevance_avg": result.features.relevance_score_avg,
                 "recency_max": result.features.recency_weight_max
             },
             "raw_result": result,  # For debugging
@@ -402,22 +402,52 @@ Citations:
         return output.strip()
 
     def generate_explanation(self, result: FactCheckResult) -> str:
-        """Generate explanation using Akshay's multi-step reasoning"""
+        """Generate explanation using reasoning with full citation context"""
+        
+        # Use all_evidence if available, fall back to citations
+        evidence_to_analyze = result.all_evidence if result.all_evidence else result.citations
+        
+        print(f"\n[REASONING INPUT]")
+        print(f"  Claim: {result.claim}")
+        print(f"  Verdict: {result.verdict}")
+        print(f"  Score: {result.score}")
+        print(f"  Evidence passages: {len(evidence_to_analyze)}")
+        
         if not self.use_reasoning:
-            # Simple fallback
             prompt = f"Explain this verdict: {result.claim} is {result.verdict} (score: {result.score}/100)"
             return self.llm.message(prompt)
         
-        # Use Akshay's reasoning agent
-        question = f"""Analyze this fact-check result:
-        Claim: {result.claim}
-        Verdict: {result.verdict}
-        Score: {result.score}/100
-        Citations: {chr(10).join(c.passage.content[:100] for c in result.citations[:2])}
-
-        Explain why this verdict was reached."""
+        # Build citation context with NLI scores from ALL evidence
+        citation_details = []
+        for i, c in enumerate(evidence_to_analyze, 1):
+            nli_info = f"[entail={c.entail_prob:.2f}, contradict={c.contradict_prob:.2f}]"
+            content = c.passage.content[:300].strip()
+            citation_details.append(f"{i}. {nli_info} {content}")
         
-        return self.reasoning_engine.reasoning_agent(question)
+        citations_text = "\n".join(citation_details)
+        
+        question = f"""Analyze this fact-check result:
+
+    Claim: {result.claim}
+    Verdict: {result.verdict}
+    Score: {result.score}/100
+
+    Retrieved Evidence ({len(evidence_to_analyze)} passages with NLI scores):
+    {citations_text}
+
+    Explain why this verdict was reached, focusing on:
+    1. Which passages support vs contradict the claim
+    2. Any temporal or contextual conflicts in the evidence
+    3. Why the score is {result.score}/100"""
+        
+        print(f"[REASONING PROMPT]:\n{question[:500]}...")
+        
+        explanation = self.reasoning_engine.reasoning_agent(question)
+        
+        print(f"[REASONING OUTPUT]: {explanation[:200]}...")
+        
+        return explanation
+
 
 def main():
     """

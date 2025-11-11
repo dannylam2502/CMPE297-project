@@ -70,7 +70,7 @@ const FeatureDisplay = ({ features }) => {
         <Text>â€¢ Max Entailment: <Text code>{features.entail_max?.toFixed(2) || 'N/A'}</Text></Text><br />
         <Text>â€¢ Max Contradiction: <Text code>{features.contradict_max?.toFixed(2) || 'N/A'}</Text></Text><br />
         <Text>â€¢ Agreeing Domains: <Text code>{features.agree_domain_count || 0}</Text></Text><br />
-        <Text>â€¢ Avg Reliability: <Text code>{features.reliability_avg?.toFixed(2) || 'N/A'}</Text></Text>
+        <Text>â€¢ Avg Relevance: <Text code>{features.relevance_avg?.toFixed(2) || 'N/A'}</Text></Text>
       </div>
     </Space>
   );

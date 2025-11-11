@@ -60,7 +60,7 @@ class FactValidator:
             features.entail_mean3,
             features.contradict_max,
             features.agree_domain_count,
-            features.releliance_score_avg,
+            features.relevance_score_avg,
             features.recency_weight_max,
             features.contest_score,
             num_agree,
@@ -140,7 +140,7 @@ class FactValidator:
             entail_mean3=np.mean(entail_probs[:3]) if entail_probs else 0.0,
             contradict_max=contradict_max,
             agree_domain_count=len(domains),
-            releliance_score_avg=np.mean([r.passage.relevance_score for r in valid_results]),
+            relevance_score_avg=np.mean([r.passage.relevance_score for r in valid_results]),
             recency_weight_max=max(r.recency_weight for r in valid_results),
             contest_score = entail_max * contradict_max
         )
@@ -200,9 +200,17 @@ class FactValidator:
         print(f"[VERDICT] {verdict} (score: {score}) | agree={num_agree}, disagree={num_disagree}, features: entail_max={features.entail_max:.2f}, contra_max={features.contradict_max:.2f}")
 
         # 8. Get citations
-        citations = self._get_top_citations(valid_results, num_agree, num_disagree)
-        
-        return FactCheckResult(claim, verdict, score, citations, features)
+        # Get top 3 for display
+        top_citations = self._get_top_citations(valid_results, num_agree, num_disagree)
+
+        return FactCheckResult(
+            claim, 
+            verdict, 
+            score, 
+            top_citations,  # Top 3 for frontend
+            features,
+            all_evidence=valid_results  # All 20 for reasoning
+        )
     
     def generate_training_example(self, claim: str, passages: List[SourcePassage]) -> Tuple[FactCheckFeatures, int, int, int, int]:
         # 1. Filter by relevance

@@ -29,6 +29,8 @@ data/
 !data/qdrant/metadata.json
 !data/load_fever.py
 !data/mock.json
+!data/load_nba_stats.py
+
 
 # ------------------------------------
 # 6. DEBUG & TESTING
@@ -46,5 +48,5 @@ src/modules/frontend/node_modules/
 # ------------------------------------
 # 8. LARGE BINARY FILES & DATASETS
 # ------------------------------------
-fact_validator_models.joblib
-src/fact_validator_models.joblib4
+# fact_validator_models.joblib
+# src/fact_validator_models.joblib4
