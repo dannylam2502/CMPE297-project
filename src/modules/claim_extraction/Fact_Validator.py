@@ -35,7 +35,7 @@ class FactValidator:
         
         self.llm = llm
         self.nli = nli_backend
-        self.related_gate = 0.60 # Relevance threshold
+        self.related_gate = 0.05 # Relevance threshold
         self.agree_cut = 0.60    # Entailment threshold
         self.contra_cut = 0.60   # Contradiction threshold
         self.clf = None # [!] This will be a RandomForestClassifier
