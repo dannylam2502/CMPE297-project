@@ -2,10 +2,22 @@ from abc import ABC, abstractmethod
 from typing import List
 import ollama
 from modules.llm.llm_engine_interface import LLMInterface
+import subprocess
 
 class llm_ollama(LLMInterface):
-    def __init__(self, role="user", model="llama3.1", temperature=0.3):
-    # def __init__(self, role="user", model="llama3.2:3b", temperature=0.3):
+    def __init__(self, role="user", model=None, temperature=0.3):
+        available_models = subprocess.getoutput("ollama list")
+
+        if model is None:
+            if "llama3.2:1b" in available_models:
+                model = "llama3.2:1b"
+            elif "llama3.2:3b" in available_models:
+                model = "llama3.2:3b"
+            elif "phi3:mini" in available_models:
+                model = "phi3:mini"
+            else:
+                model = "llama3.1"  # fallback 
+
         self.role = role
         self.model = model
         self.temperature = temperature

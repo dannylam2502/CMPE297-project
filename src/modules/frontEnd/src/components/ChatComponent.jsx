@@ -1,8 +1,28 @@
 import React, { useState } from 'react';
-import { Input, Button, Space } from 'antd';
-import { SendOutlined } from '@ant-design/icons';
+import { Input, Button, Select } from 'antd';
+import './ChatComponent.css';
 
-const { TextArea } = Input;
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005';
+
+const LLM_OPTIONS = [
+  {
+    label: 'GPT-4o Mini',
+    value: 'gpt-4o-mini',
+    provider: 'openai',
+    description: 'OpenAI lightweight reasoning model',
+  },
+  {
+    label: 'Llama 3.1',
+    value: 'llama3.1',
+    provider: 'ollama',
+    description: 'Ollama on-prem deployment',
+  },
+];
+
+const PROVIDER_BY_VALUE = LLM_OPTIONS.reduce((acc, option) => {
+  acc[option.value] = option.provider;
+  return acc;
+}, {});
 
 const ChatComponent = ({
   handleResp,
@@ -10,18 +30,20 @@ const ChatComponent = ({
   isLoading,
   setIsLoading,
   selectedLLM,
+  onModelChange = () => {},
 }) => {
   const [question, setQuestion] = useState('');
+  const [isSwitchingModel, setIsSwitchingModel] = useState(false);
 
   const handleSubmit = async () => {
     if (!question.trim()) return;
     // Check backend is ready
-        try {
-            await fetch('http://localhost:5005/health');
-        } catch {
-            alert('Backend not ready yet, please wait...');
-            return;
-        }
+    try {
+      await fetch('http://localhost:5005/health');
+    } catch {
+      alert('Backend not ready yet, please wait...');
+      return;
+    }
     const currentQuestion = question;
     setQuestion('');
     addQuestion(currentQuestion);
@@ -70,36 +92,75 @@ const ChatComponent = ({
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
+  const handleModelSelect = async (value) => {
+    if (value === selectedLLM) return;
+    onModelChange(value);
+    const provider = PROVIDER_BY_VALUE[value];
+    if (!provider) return;
+
+    setIsSwitchingModel(true);
+    try {
+      const response = await fetch(`${API_URL}/set-llm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ llm_provider: provider }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      await response.json();
+    } catch (error) {
+      console.error('Failed to set backend LLM provider:', error);
+    } finally {
+      setIsSwitchingModel(false);
     }
   };
 
   return (
-    <Space.Compact style={{ width: '100%' }} size="large">
-      <TextArea
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        onKeyPress={handleKeyPress}
-        placeholder="Enter a claim to fact-check..."
-        autoSize={{ minRows: 2, maxRows: 4 }}
-        disabled={isLoading}
-        style={{ fontSize: '16px' }}
-      />
-      <Button
-        type="primary"
-        icon={<SendOutlined />}
-        onClick={handleSubmit}
-        disabled={isLoading || !question.trim()}
-        loading={isLoading}
-        size="large"
-        style={{ height: 'auto' }}
-      >
-        Check
-      </Button>
-    </Space.Compact>
+    <div className="chat-bar-wrapper">
+      <div className="chat-bar">
+        <div className="chat-select-group">
+          <span className="chat-label">Model</span>
+          <Select
+            value={selectedLLM}
+            onChange={handleModelSelect}
+            disabled={isLoading || isSwitchingModel}
+            options={LLM_OPTIONS}
+            popupClassName="chat-select-dropdown"
+            className="chat-model-select"
+            loading={isSwitchingModel}
+            dropdownStyle={{
+              background: '#14151a',
+            }}
+          />
+        </div>
+        <div className="chat-input-wrapper">
+          <Input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onPressEnter={(e) => {
+              e.preventDefault();
+              handleSubmit();
+            }}
+            placeholder="Ask about any player, team, or game..."
+            disabled={isLoading || isSwitchingModel}
+            className="chat-input"
+            bordered={false}
+          />
+        </div>
+        <Button
+          type="primary"
+          className="chat-check-button"
+          onClick={handleSubmit}
+          disabled={isLoading || !question.trim() || isSwitchingModel}
+          loading={isLoading}
+          size="large"
+        >
+          Check
+        </Button>
+      </div>
+    </div>
   );
 };
 
