@@ -8,7 +8,7 @@ import os
 from typing import Dict, Any, List
 from datetime import datetime
 from dataclasses import asdict
-
+from modules.llm.enhanced_llm_reasoning import NBA_Statistics_Reasoner
 # Module imports - adjust paths based on actual repo structure
 from modules.claim_extraction.Fact_Validator import FactValidator
 from modules.claim_extraction.NLIModel import NLI_LABELS, NLIModel
@@ -71,7 +71,7 @@ class FactCheckingPipeline:
 
         # Initialize Reasoning Engine (if enabled)
         if self.use_reasoning:
-            self.reasoning_engine = llm_reasoning(self.llm)
+            self.reasoning_engine = NBA_Statistics_Reasoner(self.llm)
         
         print(f"Pipeline initialized:")
         print(f"  Collection: '{collection_name}'")
