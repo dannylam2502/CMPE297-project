@@ -2,7 +2,8 @@
 Flask Backend Server for Fact-Checking Pipeline
 Provides REST API endpoint for the React frontend
 """
-
+from dotenv import load_dotenv
+load_dotenv()
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sys
@@ -48,14 +49,16 @@ print(f"  LLM Provider: {LLM_PROVIDER}")
 print(f"  Project Root: {PROJECT_ROOT}")
 
 # Use absolute paths from project root
-QDRANT_LOCATION = str(PROJECT_ROOT / "data" / "qdrant")
-NBA_DATA_PATH = PROJECT_ROOT / "data" / "nba.json"
+QDRANT_URL = os.environ["QDRANT_URL"]
+QDRANT_API_KEY = os.environ["QDRANT_API_KEY"]
+
 
 # Initialize pipeline
 pipeline = FactCheckingPipeline(
-    use_reasoning=True, 
+    use_reasoning=True,
     llm_provider=LLM_PROVIDER,
-    qdrant_location=QDRANT_LOCATION
+    qdrant_url=QDRANT_URL,
+    qdrant_api_key=QDRANT_API_KEY
 )
 
 # -------------------------------------------------------------------------
@@ -65,12 +68,12 @@ collection_name = "nba_claims"
 try:
     size = pipeline.vector_db.get_collection_size()
     if size == 0:
-        print(f"[⚠] Qdrant collection '{collection_name}' is empty.")
+        print(f" Qdrant collection '{collection_name}' is empty.")
         print(f"    → Run ingestion manually: python src/modules/misinformation_module/src/ingest_nba.py")
     else:
-        print(f"[✓] Qdrant collection '{collection_name}' loaded successfully with {size} entries.")
+        print(f" Qdrant collection '{collection_name}' loaded successfully with {size} entries.")
 except Exception as e:
-    print(f"[⚠] Could not check collection size: {e}")
+    print(f" Could not check collection size: {e}")
     print("    → Run ingestion manually if you haven't already.")
 
 # -------------------------------------------------------------------------
@@ -114,8 +117,10 @@ def rebuild_pipeline(new_provider: str) -> bool:
         new_pipeline = FactCheckingPipeline(
             use_reasoning=current_reasoning,
             llm_provider=normalized_provider,
-            qdrant_location=QDRANT_LOCATION
+            qdrant_url=QDRANT_URL,
+            qdrant_api_key=QDRANT_API_KEY
         )
+
 
         # Replace old pipeline with new one
         pipeline = new_pipeline
@@ -187,53 +192,6 @@ def chat():
         }), 500
 
 
-# ============================================
-# Route: /set-llm
-# ============================================
-@app.route('/set-llm', methods=['POST'])
-def set_llm():
-    """
-    Endpoint to switch the active LLM provider between OpenAI and Ollama.
-    Called by the frontend dropdown in LLMSelector.jsx.
-    """
-    try:
-         # Read JSON input from frontend
-        data = request.get_json(silent=True) or {}
-        requested_provider = (data.get('llm_provider') or '').lower()
-        
-        # Validate provider name
-        if requested_provider not in ('openai', 'ollama'):
-            return jsonify({
-                'error': 'Invalid llm_provider value',
-                'allowed_providers': ['openai', 'ollama']
-            }), 400
-        
-        # Log the incoming switch request
-        print(f"/set-llm request received: {requested_provider}")
-
-        # Try to rebuild the pipeline with the new provider
-        changed = rebuild_pipeline(requested_provider)
-
-        # Return message depending on whether a change was needed
-        message = (
-            f"LLM provider already set to '{LLM_PROVIDER}'."
-            if not changed else
-            f"LLM provider switched to '{LLM_PROVIDER}'."
-        )
-        
-        # Return response to frontend
-        return jsonify({
-            'status': 'ok',
-            'llm_provider': LLM_PROVIDER,
-            'message': message
-        })
-    
-    except Exception as e:
-        # Handle any unexpected backend errors
-        print(f"Error handling /set-llm request: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health():

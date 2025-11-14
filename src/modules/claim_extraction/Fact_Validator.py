@@ -6,6 +6,8 @@ from modules.claim_extraction.Fact_Validator_Data_models import Citation, Citati
 import numpy as np
 from datetime import datetime
 from typing import Dict, List, Tuple
+from datetime import datetime, timezone
+
 
 # [!] IMPORT CHANGES
 from sklearn.preprocessing import LabelEncoder  # <-- Corrected import
@@ -118,7 +120,7 @@ class FactValidator:
     def _calculate_recency(self, published_at: datetime) -> Tuple[float, bool]:
         if not published_at:
             return (0.5, False)
-        days_diff = (datetime.now() - published_at).days
+        days_diff = (datetime.now(timezone.utc) - published_at).days
         if days_diff < 30:
             return (1.0, True)
         elif days_diff < 365:

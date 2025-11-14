@@ -8,11 +8,13 @@ import os
 from typing import Dict, Any, List
 from datetime import datetime
 from dataclasses import asdict
+from qdrant_client import QdrantClient
+from datetime import timezone
+
 
 # Module imports - adjust paths based on actual repo structure
 from modules.claim_extraction.Fact_Validator import FactValidator
 from modules.claim_extraction.NLIModel import NLI_LABELS, NLIModel
-from modules.claim_extraction.training.Validator_Training_Data import get_training_data
 from modules.llm.llm_ollama import llm_ollama
 from modules.misinformation_module.src.qdrant_db import QdrantDB
 from modules.misinformation_module.src.embedder import E5Embedder
@@ -34,49 +36,65 @@ class FactCheckingPipeline:
         qdrant_location: str = None,
         embedding_model: str = None,
         use_reasoning: bool = True,
-        llm_provider: str = None
+        llm_provider: str = None,
+        qdrant_url: str = None,          # <-- NEW
+        qdrant_api_key: str = None       # <-- NEW
     ):
         if llm_provider is None:
             raise ValueError("llm_provider must be specified")
-        
-        if qdrant_location is None:
-            raise ValueError("qdrant_location must be specified")
-        
+
         if embedding_model is None:
             embedding_model = os.environ.get('EMBEDDING_MODEL', 'intfloat/e5-small-v2')
-        
-        self.use_reasoning = use_reasoning
-        self.qdrant_location = qdrant_location  # Store for metadata path
-        self.embedder = E5Embedder(embedding_model, normalize=True)
-        self.vector_db = QdrantDB(collection="nba_claims", vector_size=384, location=qdrant_location)
 
-        self.vector_db.ensure_collection()
-        
+        self.use_reasoning = use_reasoning
+        self.qdrant_location = qdrant_location
+        self.embedder = E5Embedder(embedding_model, normalize=True)
+
+        # ---------------------------------------------
+        # USE PASSED-IN QDRANT CLOUD PARAMS
+        # ---------------------------------------------
+        if qdrant_url is None:
+            qdrant_url = os.getenv("QDRANT_URL")
+
+        if qdrant_api_key is None:
+            qdrant_api_key = os.getenv("QDRANT_API_KEY")
+
+        self.vector_db = QdrantDB(
+            collection=os.getenv("COLLECTION_NAME", "nba_news_claims"),
+            vector_size=vector_size,
+            client=QdrantClient(
+                url=qdrant_url,
+                api_key=qdrant_api_key
+            )
+        )
+
+        # Choose LLM provider
         if llm_provider.lower() == "ollama":
             self.llm = llm_ollama()
         elif llm_provider.lower() == "openai":
             self.llm = llm_openai()
         else:
-            raise ValueError(f"Unknown LLM provider: {llm_provider}. Use 'openai' or 'ollama'")
+            raise ValueError(f"Unknown LLM provider: {llm_provider}")
+
         self.current_llm_provider = llm_provider.lower()
-        
-        # Initialize Fact Validator
+
+        # Fact validator
         nli = NLIModel(
             emb_model_name="sentence-transformers/all-mpnet-base-v2",
             nli_model_name="roberta-large-mnli",
             nli_labels=NLI_LABELS
         )
-        self.fact_validator = FactValidator(self.llm, nli, training_data=None)  # Skip training
-        # self.fact_validator = FactValidator(self.llm, nli)
+        self.fact_validator = FactValidator(self.llm, nli, training_data=None)
 
-        # Initialize Reasoning Engine (if enabled)
+        # Reasoning
         if self.use_reasoning:
             self.reasoning_engine = llm_reasoning(self.llm)
-        
-        print(f"Pipeline initialized:")
+
+        print("Pipeline initialized:")
         print(f"  Collection: '{collection_name}'")
         print(f"  LLM: {llm_provider}")
         print(f"  Reasoning: {'enabled' if self.use_reasoning else 'disabled'}")
+
 
     # --- Runtime LLM Provider Switching ---
     def set_llm_provider(self, provider: str) -> str:
@@ -210,46 +228,101 @@ class FactCheckingPipeline:
                 if (i // insert_batch_size) % 100 == 0:
                     print(f"  Progress: {i}/{len(points)} vectors inserted")
         
-        print(f"✓ Loaded {len(points)} entries into knowledge base")
+        print(f"Loaded {len(points)} entries into knowledge base")
         
         # Save metadata
         source_hash = self.compute_source_hash(data_path)
         self.save_metadata(data_path, source_hash)
+
+    def _extract_domain(self, url: str) -> str:
+        """Extract clean domain from a URL."""
+        try:
+            if "://" in url:
+                return url.split("://")[1].split("/")[0]
+            return url.split("/")[0]
+        except Exception:
+            return "unknown"
+
     
     def retrieve_evidence(self, query: str, top_k: int = 20) -> List[SourcePassage]:
         """
         Retrieve relevant passages from vector DB.
-        
-        Args:
-            query: User's claim/query text
-            top_k: Number of passages to retrieve
-            
-        Returns:
-            List of SourcePassage objects for fact validation
+        Supports NEWS payloads:
+            • title
+            • content
+            • source
+            • published_at
+        And older CLAIM payloads:
+            • claim
+            • source
         """
+
         query_vec = self.embedder.embed_query(query)
         hits = self.vector_db.search(query_vec, top_k=top_k)
-        
+
         passages = []
+
         for hit in hits:
+            payload = hit.payload or {}
+
+            # ----------------------------
+            # Smart fallback content logic
+            # ----------------------------
+            content = (
+                payload.get("content") or
+                payload.get("summary") or
+                payload.get("claim") or
+                payload.get("title") or
+                ""
+            )
+
+            # ----------------------------
+            # Smart title logic
+            # ----------------------------
+            title = (
+                payload.get("title") or
+                payload.get("claim") or
+                content[:80] or
+                "Untitled"
+            )
+
+            # ----------------------------
+            # Smart URL/source fallback
+            # ----------------------------
+            url = (
+                payload.get("source") or
+                payload.get("url") or
+                "unknown"
+            )
+
+            # ----------------------------
+            # Published timestamp handling
+            # ----------------------------
+            published_raw = payload.get("published_at")
+
+            if published_raw:
+                try:
+                    published_at = datetime.strptime(
+                        published_raw, "%a, %d %b %Y %H:%M:%S %z"
+                    )
+                except Exception:
+                    published_at = datetime.now(timezone.utc)
+            else:
+                published_at = datetime.now(timezone.utc)
+
             passages.append(
                 SourcePassage(
-                    content=hit.payload["claim"],
+                    content=content,
                     relevance_score=float(hit.score),
-                    url=hit.payload.get("source", "unknown"),
-                    domain=self._extract_domain(hit.payload.get("source", "unknown")),
-                    title=hit.payload["claim"][:100],  # Use first 100 chars as title
-                    published_at=datetime.now()  # Stub - would need real dates
+                    url=url,
+                    domain=self._extract_domain(url),
+                    title=title,
+                    published_at=published_at
                 )
             )
-        
+
         return passages
-    
-    def _extract_domain(self, url: str) -> str:
-        """Extract domain from URL, fallback to 'unknown'"""
-        if "://" in url:
-            return url.split("://")[1].split("/")[0]
-        return "unknown"
+
     
     def process_query(self, user_input: str) -> Dict[str, Any]:
         """
@@ -463,12 +536,11 @@ def main():
     
     # Compute paths relative to project root
     project_root = Path(__file__).parent
-    qdrant_path = str(project_root / "data" / "qdrant")
+    qdrant_path = None
     
     llm_provider = os.environ.get('LLM_PROVIDER', 'openai')
     
     pipeline = FactCheckingPipeline(
-        qdrant_location=qdrant_path,
         llm_provider=llm_provider
     )
     

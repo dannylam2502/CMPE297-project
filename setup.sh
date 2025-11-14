@@ -1,306 +1,110 @@
 #!/bin/sh
+PYTHON="/c/Users/asabry/AppData/Local/Programs/Python/Python312/python.exe"
+
 set -e
 
-echo "=== Fact-Checking System Setup ==="
+echo "=== Fact-Checking System Setup (Cloud Edition) ==="
 
 # -------------------------------------------------------------
 # REQUIREMENTS
 # -------------------------------------------------------------
-command -v python3 >/dev/null 2>&1 || { echo "Python 3 required"; exit 1; }
+command -v $PYTHON >/dev/null 2>&1 || { echo "Python 3 required"; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "Node.js required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
 
+# -------------------------------------------------------------
+# PYTHON VENV
+# -------------------------------------------------------------
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."
-    python3 -m venv .venv
+    $PYTHON -m venv .venv
 fi
 
 echo "Activating virtual environment..."
-. .venv/bin/activate
+. .venv/Scripts/activate
 
-echo "Checking Python dependencies..."
-pip install -r requirements.txt 2>&1 | grep -v "Requirement already satisfied" || true
+echo "Installing Python dependencies..."
+pip install -r requirements.txt
 
 # -------------------------------------------------------------
 # FRONTEND BUILD
 # -------------------------------------------------------------
 if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)" ]; then
-    printf "Frontend build exists. Rebuild? (y/n): "
+    printf "Frontend already built. Rebuild? (y/n): "
     read -r rebuild
-    case "$rebuild" in
-        [Yy]*)
-            echo "Installing frontend dependencies..."
-            (cd src/modules/frontend && npm install)
-            echo "Building frontend..."
-            (cd src/modules/frontend && npm run build)
-            ;;
-        *)
-            echo "Skipping frontend build"
-            ;;
-    esac
+    if [ "$rebuild" = "y" ] || [ "$rebuild" = "Y" ]; then
+        (cd src/modules/frontend && npm install && npm run build)
+    else
+        echo "Skipping rebuild."
+    fi
 else
-    echo "Installing frontend dependencies..."
-    (cd src/modules/frontend && npm install)
-    echo "Building frontend..."
-    (cd src/modules/frontend && npm run build)
+    (cd src/modules/frontend && npm install && npm run build)
 fi
 
 # -------------------------------------------------------------
 # ENV FILE SETUP
 # -------------------------------------------------------------
 if [ ! -f .env ]; then
-    echo "Creating .env file..."
-    echo "OPENAI_API_KEY=your_key_here" > .env
+    echo "Creating .env..."
+    echo "OPENAI_API_KEY=" > .env
+    echo "LLM_PROVIDER=openai" >> .env
     echo "EMBEDDING_MODEL=intfloat/e5-small-v2" >> .env
     echo "HF_HOME=./data/models" >> .env
+    echo "QDRANT_URL=" >> .env
+    echo "QDRANT_API_KEY=" >> .env
 fi
 
-# -------------------------------------------------------------
-# DIRECTORIES
-# -------------------------------------------------------------
-mkdir -p data/models data/qdrant data/cache data/checkpoints
+echo "Using .env from project root."
+echo "Make sure QDRANT_URL and QDRANT_API_KEY are set!"
 
 # -------------------------------------------------------------
-# LLM PROVIDER SELECTION
+# VERIFY CLOUD QDRANT CONFIG
 # -------------------------------------------------------------
-if grep -q "^LLM_PROVIDER=" .env 2>/dev/null; then
-    current_provider=$(grep "^LLM_PROVIDER=" .env | cut -d'=' -f2)
+QDRANT_URL=$(grep "^QDRANT_URL=" .env | cut -d'=' -f2)
+QDRANT_API_KEY=$(grep "^QDRANT_API_KEY=" .env | cut -d'=' -f2)
+
+if [ -z "$QDRANT_URL" ] || [ -z "$QDRANT_API_KEY" ]; then
     echo ""
-    echo "Current LLM provider: $current_provider"
-    printf "Change provider? (y/n): "
-    read -r change_llm
-    case "$change_llm" in
-        [Yy]*) ask_llm=true ;;
-        *) ask_llm=false ;;
-    esac
-else
-    ask_llm=true
+    echo "ERROR: QDRANT_URL or QDRANT_API_KEY missing in .env"
+    echo "Please open .env and set your Qdrant Cloud credentials."
+    exit 1
 fi
 
-if [ "$ask_llm" = true ]; then
-    echo ""
-    echo "Select LLM provider:"
-    echo "  1. OpenAI (gpt-4o-mini)"
-    echo "  2. Ollama (llama3.1, local)"
-    printf "Choice [1-2]: "
-    read -r llm_choice
-
-    # Remove existing LLM_PROVIDER line if present
-    sed -i '/^LLM_PROVIDER=/d' .env 2>/dev/null || true
-
-    case "$llm_choice" in
-        1)
-            echo "LLM_PROVIDER=openai" >> .env
-            echo "Selected: OpenAI"
-            echo "Edit .env with your OpenAI API key"
-            ;;
-        2)
-            echo "LLM_PROVIDER=ollama" >> .env
-            echo "Selected: Ollama"
-            
-            # Check if ollama is installed
-            if ! command -v ollama >/dev/null 2>&1; then
-                echo "Error: ollama not found. Install from https://ollama.com"
-                echo "Defaulting to OpenAI instead"
-                sed -i 's/LLM_PROVIDER=ollama/LLM_PROVIDER=openai/' .env
-                exit 1
-            fi
-            
-            # Start ollama service if not running
-            echo "Checking ollama service..."
-            if ! ollama list >/dev/null 2>&1; then
-                echo "Starting ollama service..."
-                ollama serve >/dev/null 2>&1 &
-                sleep 3
-            fi
-            
-            # Check if llama3.1 model exists
-            if ollama list | grep -q "llama3.1"; then
-                echo "Model llama3.1 already installed"
-            else
-                echo "Pulling llama3.1 model (this may take several minutes)..."
-                ollama pull llama3.1
-                echo "Model download complete"
-            fi
-            
-            # Verify model is available
-            if ! ollama list | grep -q "llama3.1"; then
-                echo "Error: Failed to install llama3.1 model"
-                exit 1
-            fi
-            
-            echo "Ollama setup complete"
-            ;;
-        *)
-            echo "Invalid choice. Defaulting to OpenAI"
-            echo "LLM_PROVIDER=openai" >> .env
-            ;;
-    esac
-fi
+echo "Qdrant Cloud URL: $QDRANT_URL"
+echo "Qdrant Cloud API Key found"
 
 # -------------------------------------------------------------
-# VERIFY PROVIDER SETUP
-# -------------------------------------------------------------
-if grep -q "^LLM_PROVIDER=" .env 2>/dev/null; then
-    CURRENT_PROVIDER=$(grep "^LLM_PROVIDER=" .env | cut -d'=' -f2)
-    
-    if [ "$CURRENT_PROVIDER" = "ollama" ]; then
-        echo ""
-        echo "Verifying Ollama setup..."
-        
-        # Check if ollama is installed
-        if ! command -v ollama >/dev/null 2>&1; then
-            echo "Error: ollama not found but LLM_PROVIDER=ollama"
-            echo "Install from https://ollama.com or run setup again to switch to OpenAI"
-            exit 1
-        fi
-        
-        # Start ollama service if not running
-        if ! ollama list >/dev/null 2>&1; then
-            echo "Starting ollama service..."
-            ollama serve >/dev/null 2>&1 &
-            sleep 3
-        fi
-        
-        # Check if llama3.1 model exists
-        if ollama list | grep -q "llama3.1"; then
-            echo "âœ“ Ollama service running"
-            echo "âœ“ Model llama3.1 installed"
-        else
-            echo "Model llama3.1 not found. Pulling now..."
-            ollama pull llama3.1
-            if ollama list | grep -q "llama3.1"; then
-                echo "âœ“ Model llama3.1 installed"
-            else
-                echo "Error: Failed to install llama3.1 model"
-                exit 1
-            fi
-        fi
-        
-    elif [ "$CURRENT_PROVIDER" = "openai" ]; then
-        echo ""
-        echo "Verifying OpenAI setup..."
-        if grep -q "^OPENAI_API_KEY=sk-" .env 2>/dev/null; then
-            echo "âœ“ OpenAI API key configured"
-        else
-            echo "Warning: OPENAI_API_KEY not set or invalid"
-            echo "Edit .env and set: OPENAI_API_KEY=sk-your-key-here"
-        fi
-    fi
-fi
-
-# -------------------------------------------------------------
-# EMBEDDINGS MODEL CHECK
+# EMBEDDING MODEL
 # -------------------------------------------------------------
 echo ""
 echo "Checking embeddings model cache..."
 EMBEDDING_MODEL=$(grep "^EMBEDDING_MODEL=" .env | cut -d'=' -f2)
-HF_HOME_PATH=$(grep "^HF_HOME=" .env | cut -d'=' -f2)
-export HF_HOME="$HF_HOME_PATH"
-MODEL_CACHE_DIR=$(echo "$EMBEDDING_MODEL" | sed 's/\/\/*/--/g')
-if [ -d "$HF_HOME/hub/models--$MODEL_CACHE_DIR" ]; then
-    echo "Embeddings model ($EMBEDDING_MODEL) already cached"
-else
-    echo "Downloading embeddings model ($EMBEDDING_MODEL) - this will take a few minutes..."
-    python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('$EMBEDDING_MODEL')"
-    echo "Download complete"
-fi
+export HF_HOME=$(grep "^HF_HOME=" .env | cut -d'=' -f2)
 
+$PYTHON - <<EOF
+from sentence_transformers import SentenceTransformer
+print("Loading embedding model ($EMBEDDING_MODEL)...")
+SentenceTransformer("$EMBEDDING_MODEL")
+print("✓ Embedding model available")
+EOF
+
+# -------------------------------------------------------------
+# CLOUD INGESTION (OPTIONAL)
+# -------------------------------------------------------------
 echo ""
-echo "Training fact validator model..."
-if [ ! -f "fact_validator_models.joblib" ]; then
-    python3 -c "from modules.claim_extraction.Fact_Validator import train_model; train_model()"
-    echo "✓ Model trained"
-else
-    echo "Model already exists, skipping training"
+echo "Your ingestion script pushes data directly to Qdrant Cloud."
+echo "To run it now: python src/ingest_news_to_qdrant.py"
+
+printf "Run ingestion now? (y/n): "
+read ingest_now
+if [ "$ingest_now" = "y" ] || [ "$ingest_now" = "Y" ]; then
+    python src/ingest_news_to_qdrant.py
 fi
 
 # -------------------------------------------------------------
-# NBA DATASET
-# -------------------------------------------------------------
-
-echo ""
-echo "Checking NBA dataset..."
-
-NBA_JSON="data/nba.json"
-NBA_CSV="docs/Seasons_Stats.csv"
-
-# Check if CSV source exists
-if [ ! -f "$NBA_CSV" ]; then
-    echo "Error: Source file $NBA_CSV not found"
-    echo "Please add Seasons_Stats.csv to the docs/ directory"
-    exit 1
-fi
-
-# Check if NBA JSON exists
-if [ -f "$NBA_JSON" ]; then
-    echo "NBA dataset exists at $NBA_JSON"
-    printf "Regenerate dataset? (y/n): "
-    read -r regen_nba
-    case "$regen_nba" in
-        [Yy]*)
-            echo "Generating NBA dataset..."
-            python3 data/load_nba_stats.py
-            if [ $? -eq 0 ]; then
-                echo "✓ NBA dataset generated"
-            else
-                echo "Error: Failed to generate NBA dataset"
-                exit 1
-            fi
-            ;;
-        *)
-            echo "Skipping NBA dataset generation"
-            ;;
-    esac
-else
-    echo "NBA dataset not found. Generating..."
-    python3 data/load_nba_stats.py
-    if [ $? -eq 0 ]; then
-        echo "✓ NBA dataset generated"
-    else
-        echo "Error: Failed to generate NBA dataset"
-        exit 1
-    fi
-fi
-
-# -------------------------------------------------------------
-# QDRANT INGESTION
+# DONE
 # -------------------------------------------------------------
 echo ""
-echo "Checking Qdrant database..."
-
-QDRANT_PATH="data/qdrant"
-
-# Check if Qdrant collection exists and has data
-if [ -d "$QDRANT_PATH/collection/nba_claims" ]; then
-    echo "Qdrant collection 'nba_claims' exists"
-    printf "Reingest data? (y/n): "
-    read -r reingest
-    case "$reingest" in
-        [Yy]*)
-            echo "Ingesting NBA data into Qdrant..."
-            python3 src/modules/misinformation_module/src/ingest_nba.py
-            if [ $? -eq 0 ]; then
-                echo "✓ Data ingested into Qdrant"
-            else
-                echo "Error: Failed to ingest data"
-                exit 1
-            fi
-            ;;
-        *)
-            echo "Skipping Qdrant ingestion"
-            ;;
-    esac
-else
-    echo "Qdrant collection not found. Ingesting..."
-    python3 src/modules/misinformation_module/src/ingest_nba.py
-    if [ $? -eq 0 ]; then
-        echo "✓ Data ingested into Qdrant"
-    else
-        echo "Error: Failed to ingest data"
-        exit 1
-    fi
-fi
-
-echo ""
-echo "Setup complete. Run ./start.sh to start the server"
+echo "Setup Complete (Cloud Mode)"
+echo "Run the backend with:   ./start.sh"
+echo "Run the frontend with:  open build folder or npm serve"
