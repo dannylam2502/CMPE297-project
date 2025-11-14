@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import ChatComponent from "./components/ChatComponent";
 import RenderQA from "./components/RenderQA";
-import LLMSelector from "./components/LLMSelector";
 import { Layout, Typography, Space, Button } from "antd";
 import { GithubOutlined, ExperimentOutlined } from "@ant-design/icons";
 
@@ -10,21 +9,22 @@ const { Title, Text } = Typography;
 
 const chatComponentStyle = {
   position: "fixed",
-  bottom: "0",
-  width: "80%",
-  left: "10%",
-  marginBottom: "20px",
-  backgroundColor: "white",
-  padding: "16px",
-  borderRadius: "8px",
-  boxShadow: "0 -2px 8px rgba(0,0,0,0.1)",
+  bottom: 0,
+  left: "50%",
+  transform: "translateX(-50%)",
+  width: "min(960px, 92vw)",
+  padding: "0 16px 24px",
   zIndex: 1000,
 };
 
 const renderQAStyle = {
   marginTop: "80px",
   marginBottom: "120px",
-  minHeight: "calc(100vh - 250px)",
+  paddingTop: "16px",
+  // Reserve vertical space so the in-progress animation stays visible under the fixed chat input/footer.
+  paddingBottom: "clamp(200px, 32vh, 360px)",
+  minHeight: "calc(100vh - 220px)",
+  maxHeight: "calc(100vh - 140px)",
   overflowY: "auto",
 };
 
@@ -118,17 +118,13 @@ const App = () => {
 
       <div style={chatComponentStyle}>
         <div style={controlsStackStyle}>
-          <LLMSelector
-            selectedLLM={selectedLLM}
-            onChange={setSelectedLLM}
-            disabled={isLoading}
-          />
           <ChatComponent
             handleResp={handleResp}
             addQuestion={addQuestion}
             isLoading={isLoading}
             setIsLoading={setIsLoading}
             selectedLLM={selectedLLM}
+            onModelChange={setSelectedLLM}
           />
         </div>
       </div>

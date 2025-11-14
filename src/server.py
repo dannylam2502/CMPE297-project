@@ -192,6 +192,53 @@ def chat():
         }), 500
 
 
+# ============================================
+# Route: /set-llm
+# ============================================
+# @app.route('/set-llm', methods=['POST'])
+# def set_llm():
+#     """
+#     Endpoint to switch the active LLM provider between OpenAI and Ollama.
+#     Called by the frontend dropdown in LLMSelector.jsx.
+#     """
+#     try:
+#          # Read JSON input from frontend
+#         data = request.get_json(silent=True) or {}
+#         requested_provider = (data.get('llm_provider') or '').lower()
+        
+#         # Validate provider name
+#         if requested_provider not in ('openai', 'ollama'):
+#             return jsonify({
+#                 'error': 'Invalid llm_provider value',
+#                 'allowed_providers': ['openai', 'ollama']
+#             }), 400
+        
+#         # Log the incoming switch request
+#         print(f"/set-llm request received: {requested_provider}")
+
+#         # Try to rebuild the pipeline with the new provider
+#         changed = rebuild_pipeline(requested_provider)
+
+#         # Return message depending on whether a change was needed
+#         message = (
+#             f"LLM provider already set to '{LLM_PROVIDER}'."
+#             if not changed else
+#             f"LLM provider switched to '{LLM_PROVIDER}'."
+#         )
+        
+#         # Return response to frontend
+#         return jsonify({
+#             'status': 'ok',
+#             'llm_provider': LLM_PROVIDER,
+#             'message': message
+#         })
+    
+#     except Exception as e:
+#         # Handle any unexpected backend errors
+#         print(f"Error handling /set-llm request: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health():

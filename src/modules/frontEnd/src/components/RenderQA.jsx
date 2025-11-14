@@ -105,6 +105,74 @@ const CitationList = ({ citations }) => {
   );
 };
 
+const splitExplanationIntoParagraphs = (text) => {
+  if (typeof text !== 'string') return ['No explanation available'];
+
+  const trimmed = text.trim();
+  if (!trimmed) return ['No explanation available'];
+
+  const sentenceRegex = /[^.!?]+[.!?]+|[^.!?]+$/g;
+  const sentences = trimmed.match(sentenceRegex)?.map(sentence => sentence.trim()).filter(Boolean);
+
+  if (!sentences || sentences.length === 0) {
+    return [trimmed];
+  }
+
+  const verdictRegex = /^(the|this)\s+claim\b.*\bis\b/i;
+  const evidenceRegex = /\b(evidence|reasoning|score|verdict|confidence|analysis|entail|contradict|support|source|citation|quality)\b/i;
+  const conclusionRegex = /^(in\s+(summary|conclusion)|overall|to\s+summarize|ultimately\b)/i;
+
+  const verdictSentences = [];
+  const evidenceSentences = [];
+  const conclusionSentences = [];
+  const neutralSentences = [];
+
+  sentences.forEach(sentence => {
+    const lower = sentence.toLowerCase();
+    if (conclusionRegex.test(lower)) {
+      conclusionSentences.push(sentence);
+    } else if (verdictRegex.test(lower)) {
+      verdictSentences.push(sentence);
+    } else if (evidenceRegex.test(lower)) {
+      evidenceSentences.push(sentence);
+    } else {
+      neutralSentences.push(sentence);
+    }
+  });
+
+  if (verdictSentences.length === 0) {
+    if (neutralSentences.length > 0) {
+      verdictSentences.push(neutralSentences.shift());
+    } else if (evidenceSentences.length > 0) {
+      verdictSentences.push(evidenceSentences.shift());
+    } else if (conclusionSentences.length > 0) {
+      verdictSentences.push(conclusionSentences.shift());
+    }
+  }
+
+  const evidenceParagraphPieces = [...evidenceSentences, ...neutralSentences];
+
+  const paragraphs = [];
+
+  if (verdictSentences.length > 0) {
+    paragraphs.push(verdictSentences.join(' '));
+  }
+
+  if (evidenceParagraphPieces.length > 0) {
+    paragraphs.push(evidenceParagraphPieces.join(' '));
+  }
+
+  if (conclusionSentences.length > 0) {
+    paragraphs.push(conclusionSentences.join(' '));
+  }
+
+  if (paragraphs.length === 0) {
+    paragraphs.push(trimmed);
+  }
+
+  return paragraphs;
+};
+
 const AnswerCard = ({ answer }) => {
   // Handle loading state
   if (!answer) {
@@ -134,6 +202,7 @@ const AnswerCard = ({ answer }) => {
   const llmResponse = typeof answer.llm_response === 'string' && answer.llm_response.trim().length > 0
     ? answer.llm_response
     : null;
+  const explanationParagraphs = splitExplanationIntoParagraphs(explanation);
 
   return (
     <Card
@@ -160,9 +229,14 @@ const AnswerCard = ({ answer }) => {
         {/* Explanation */}
         <div>
           <Text strong>Explanation:</Text>
-          <Paragraph style={{ marginTop: '8px', marginBottom: 0 }}>
-            {explanation}
-          </Paragraph>
+          {explanationParagraphs.map((block, index) => (
+            <Paragraph
+              key={`explanation-${index}`}
+              style={{ marginTop: index === 0 ? '8px' : '12px', marginBottom: 0 }}
+            >
+              {block}
+            </Paragraph>
+          ))}
         </div>
 
         {/* Model Response + Evidence panels (collapsible) */}
