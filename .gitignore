@@ -2,6 +2,8 @@
 # 1. PYTHON VIRTUAL ENVIRONMENT
 # ------------------------------------
 .venv/
+venv/
+env/
 
 # ------------------------------------
 # 2. PYTHON COMPILED FILES & CACHE

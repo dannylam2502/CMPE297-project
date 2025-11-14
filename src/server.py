@@ -2,7 +2,8 @@
 Flask Backend Server for Fact-Checking Pipeline
 Provides REST API endpoint for the React frontend
 """
-
+from dotenv import load_dotenv
+load_dotenv()
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sys
@@ -48,14 +49,16 @@ print(f"  LLM Provider: {LLM_PROVIDER}")
 print(f"  Project Root: {PROJECT_ROOT}")
 
 # Use absolute paths from project root
-QDRANT_LOCATION = str(PROJECT_ROOT / "data" / "qdrant")
-NBA_DATA_PATH = PROJECT_ROOT / "data" / "nba.json"
+QDRANT_URL = os.environ["QDRANT_URL"]
+QDRANT_API_KEY = os.environ["QDRANT_API_KEY"]
+
 
 # Initialize pipeline
 pipeline = FactCheckingPipeline(
-    use_reasoning=True, 
+    use_reasoning=True,
     llm_provider=LLM_PROVIDER,
-    qdrant_location=QDRANT_LOCATION
+    qdrant_url=QDRANT_URL,
+    qdrant_api_key=QDRANT_API_KEY
 )
 
 # -------------------------------------------------------------------------
@@ -65,12 +68,12 @@ collection_name = "nba_claims"
 try:
     size = pipeline.vector_db.get_collection_size()
     if size == 0:
-        print(f"[⚠] Qdrant collection '{collection_name}' is empty.")
+        print(f" Qdrant collection '{collection_name}' is empty.")
         print(f"    → Run ingestion manually: python src/modules/misinformation_module/src/ingest_nba.py")
     else:
-        print(f"[✓] Qdrant collection '{collection_name}' loaded successfully with {size} entries.")
+        print(f" Qdrant collection '{collection_name}' loaded successfully with {size} entries.")
 except Exception as e:
-    print(f"[⚠] Could not check collection size: {e}")
+    print(f" Could not check collection size: {e}")
     print("    → Run ingestion manually if you haven't already.")
 
 # -------------------------------------------------------------------------
@@ -114,8 +117,10 @@ def rebuild_pipeline(new_provider: str) -> bool:
         new_pipeline = FactCheckingPipeline(
             use_reasoning=current_reasoning,
             llm_provider=normalized_provider,
-            qdrant_location=QDRANT_LOCATION
+            qdrant_url=QDRANT_URL,
+            qdrant_api_key=QDRANT_API_KEY
         )
+
 
         # Replace old pipeline with new one
         pipeline = new_pipeline
