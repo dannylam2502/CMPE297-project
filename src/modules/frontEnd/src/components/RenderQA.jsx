@@ -1,4 +1,6 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Card, Typography, Space, Divider, Spin, Badge, Collapse, List } from 'antd';
 import {
   CheckCircleOutlined,
@@ -7,6 +9,7 @@ import {
   ExclamationCircleOutlined,
   LinkOutlined
 } from '@ant-design/icons';
+import './RenderQA.css';
 
 const { Text, Title, Paragraph } = Typography;
 const { Panel } = Collapse;
@@ -105,79 +108,11 @@ const CitationList = ({ citations }) => {
   );
 };
 
-const splitExplanationIntoParagraphs = (text) => {
-  if (typeof text !== 'string') return ['No explanation available'];
-
-  const trimmed = text.trim();
-  if (!trimmed) return ['No explanation available'];
-
-  const sentenceRegex = /[^.!?]+[.!?]+|[^.!?]+$/g;
-  const sentences = trimmed.match(sentenceRegex)?.map(sentence => sentence.trim()).filter(Boolean);
-
-  if (!sentences || sentences.length === 0) {
-    return [trimmed];
-  }
-
-  const verdictRegex = /^(the|this)\s+claim\b.*\bis\b/i;
-  const evidenceRegex = /\b(evidence|reasoning|score|verdict|confidence|analysis|entail|contradict|support|source|citation|quality)\b/i;
-  const conclusionRegex = /^(in\s+(summary|conclusion)|overall|to\s+summarize|ultimately\b)/i;
-
-  const verdictSentences = [];
-  const evidenceSentences = [];
-  const conclusionSentences = [];
-  const neutralSentences = [];
-
-  sentences.forEach(sentence => {
-    const lower = sentence.toLowerCase();
-    if (conclusionRegex.test(lower)) {
-      conclusionSentences.push(sentence);
-    } else if (verdictRegex.test(lower)) {
-      verdictSentences.push(sentence);
-    } else if (evidenceRegex.test(lower)) {
-      evidenceSentences.push(sentence);
-    } else {
-      neutralSentences.push(sentence);
-    }
-  });
-
-  if (verdictSentences.length === 0) {
-    if (neutralSentences.length > 0) {
-      verdictSentences.push(neutralSentences.shift());
-    } else if (evidenceSentences.length > 0) {
-      verdictSentences.push(evidenceSentences.shift());
-    } else if (conclusionSentences.length > 0) {
-      verdictSentences.push(conclusionSentences.shift());
-    }
-  }
-
-  const evidenceParagraphPieces = [...evidenceSentences, ...neutralSentences];
-
-  const paragraphs = [];
-
-  if (verdictSentences.length > 0) {
-    paragraphs.push(verdictSentences.join(' '));
-  }
-
-  if (evidenceParagraphPieces.length > 0) {
-    paragraphs.push(evidenceParagraphPieces.join(' '));
-  }
-
-  if (conclusionSentences.length > 0) {
-    paragraphs.push(conclusionSentences.join(' '));
-  }
-
-  if (paragraphs.length === 0) {
-    paragraphs.push(trimmed);
-  }
-
-  return paragraphs;
-};
-
-const AnswerCard = ({ answer }) => {
+const AnswerCard = ({ answer, className = '' }) => {
   // Handle loading state
   if (!answer) {
     return (
-      <Card>
+      <Card className={className}>
         <Spin tip="Checking facts..." />
       </Card>
     );
@@ -186,7 +121,7 @@ const AnswerCard = ({ answer }) => {
   // Handle error state
   if (answer.error) {
     return (
-      <Card style={{ backgroundColor: '#fff2f0', borderColor: '#ffccc7' }}>
+      <Card className={`${className} ai-error-card`}>
         <Text type="danger">{answer.message || 'An error occurred'}</Text>
       </Card>
     );
@@ -196,17 +131,19 @@ const AnswerCard = ({ answer }) => {
   const claim = answer.claim || 'No claim extracted';
   const verdict = answer.verdict || 'Unknown';
   const score = answer.score || 0;
-  const explanation = answer.explanation || 'No explanation available';
+  const explanation = answer.explanation;
   const citations = answer.citations || [];
   const features = answer.features || null;
+  const explanationContent = typeof explanation === 'string' && explanation.trim().length > 0
+    ? explanation
+    : 'No explanation available';
   const llmResponse = typeof answer.llm_response === 'string' && answer.llm_response.trim().length > 0
     ? answer.llm_response
     : null;
-  const explanationParagraphs = splitExplanationIntoParagraphs(explanation);
 
   return (
     <Card
-      style={{ marginBottom: '16px' }}
+      className={`${className} ai-answer-card`}
       title={
         <Space>
           <VerdictIcon verdict={verdict} />
@@ -229,14 +166,11 @@ const AnswerCard = ({ answer }) => {
         {/* Explanation */}
         <div>
           <Text strong>Explanation:</Text>
-          {explanationParagraphs.map((block, index) => (
-            <Paragraph
-              key={`explanation-${index}`}
-              style={{ marginTop: index === 0 ? '8px' : '12px', marginBottom: 0 }}
-            >
-              {block}
-            </Paragraph>
-          ))}
+          <div className="markdown-body" style={{ marginTop: '8px' }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {explanationContent}
+            </ReactMarkdown>
+          </div>
         </div>
 
         {/* Model Response + Evidence panels (collapsible) */}
@@ -244,9 +178,11 @@ const AnswerCard = ({ answer }) => {
           <Collapse ghost style={{ marginBottom: '3rem' }}>
             {llmResponse && (
               <Panel header="Model Response" key="model-response">
-                <Paragraph style={{ marginBottom: 0 }}>
-                  {llmResponse}
-                </Paragraph>
+                <div className="markdown-body" style={{ marginBottom: 0 }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {llmResponse}
+                  </ReactMarkdown>
+                </div>
               </Panel>
             )}
             {features && (
@@ -271,6 +207,15 @@ const AnswerCard = ({ answer }) => {
   );
 };
 
+// Wrapper component to render fact-check results inside the AI message container
+const FactCheckResultRenderer = ({ answer }) => {
+  return (
+    <div className="ai-result-wrapper">
+      <AnswerCard answer={answer} />
+    </div>
+  );
+};
+
 const RenderQA = ({ conversation, isLoading }) => {
   // Handle empty state
   if (!conversation || conversation.length === 0) {
@@ -288,16 +233,23 @@ const RenderQA = ({ conversation, isLoading }) => {
   }
 
   return (
-    <div style={{ padding: '20px 0' }}>
+    <div className="chat-thread">
       {conversation.map((entry, index) => (
-        <div key={index} style={{ marginBottom: '24px' }}>
-          <Card size="small" style={{ backgroundColor: '#f0f2f5', marginBottom: '12px' }}>
-            <Text strong>Your Claim:</Text>
-            <Paragraph style={{ marginTop: '8px', marginBottom: 0 }}>
-              {entry.question}
-            </Paragraph>
-          </Card>
-          <AnswerCard answer={entry.answer} />
+        <div key={index} className="message-pair">
+          <div className="message-row user-row">
+            <div className="bubble-label">You</div>
+            <div className="message-bubble user-bubble">
+              <Paragraph style={{ margin: 0 }}>{entry.question}</Paragraph>
+            </div>
+          </div>
+
+          <div className="message-row ai-row">
+            <div className="bubble-label ai-label">
+              <div className="ai-avatar">AI</div>
+              <Text strong>NBA Insight AI</Text>
+            </div>
+            <FactCheckResultRenderer answer={entry.answer} />
+          </div>
         </div>
       ))}
     </div>
