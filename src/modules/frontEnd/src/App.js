@@ -85,9 +85,30 @@ const App = () => {
         }}
       >
         <Space>
-          <ExperimentOutlined style={{ fontSize: "24px", color: "white" }} />
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 48 48"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ display: "block" }}
+          >
+            <circle cx="24" cy="24" r="20" stroke="white" strokeWidth="2.5" />
+            <path
+              d="M24 4v40M4 24h40"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+            <path
+              d="M13 11c6 5 6 21 0 26M35 11c-6 5-6 21 0 26"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+          </svg>
           <Title level={3} style={{ color: "white", margin: 0 }}>
-            AI Fact-Checking System
+            NBA Insight AI
           </Title>
         </Space>
         <Space>

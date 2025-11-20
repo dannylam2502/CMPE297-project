@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Determine Python runner per OS
+PYRUN="python"
+OS_NAME="$(uname -s)"
+if [ "$OS_NAME" = "Darwin" ] || [ "$OS_NAME" = "Linux" ]; then
+    PYRUN="python3"
+fi
+
 # Kill any existing backend on port 5005
 lsof -ti:5005 | xargs kill -9 2>/dev/null
 
@@ -10,7 +17,7 @@ fi
 
 # Start backend
 cd src
-python server.py &
+"$PYRUN" server.py &
 BACKEND_PID=$!
 
 # Start frontend

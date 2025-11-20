@@ -1,5 +1,15 @@
 #!/bin/sh
-PYTHON="/c/Users/asabry/AppData/Local/Programs/Python/Python312/python.exe"
+
+# Auto-detect Python on macOS/Linux, fallback to existing Windows path
+if [ -z "$PYTHON" ]; then
+    case "$(uname -s)" in
+        Darwin|Linux)
+            PYTHON="$(command -v python3 || command -v python || true)"
+            ;;
+    esac
+fi
+
+PYTHON=${PYTHON:-"/c/Users/asabry/AppData/Local/Programs/Python/Python312/python.exe"}
 
 set -e
 
@@ -21,7 +31,14 @@ if [ ! -d ".venv" ]; then
 fi
 
 echo "Activating virtual environment..."
-. .venv/Scripts/activate
+if [ -f ".venv/bin/activate" ]; then
+    . .venv/bin/activate
+elif [ -f ".venv/Scripts/activate" ]; then
+    . .venv/Scripts/activate
+else
+    echo "Virtual environment activation script not found."
+    exit 1
+fi
 
 echo "Installing Python dependencies..."
 pip install -r requirements.txt
