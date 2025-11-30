@@ -260,7 +260,7 @@ Explanation:"""
             
             return self.call_llm(prompt)
 
-    def reasoning_agent(self, input_text, is_question=True):
+    def reasoning_agent(self, input_text, is_question=False):
         """
         Main entry point for reasoning about fact-check results
         
