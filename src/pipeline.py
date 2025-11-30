@@ -17,10 +17,10 @@ from modules.claim_extraction.NLIModel import NLI_LABELS, NLIModel
 from modules.llm.llm_ollama import llm_ollama
 from modules.misinformation_module.src.qdrant_db import QdrantDB
 from modules.misinformation_module.src.embedder import E5Embedder
-from modules.claim_extraction.Fact_Validator_Data_models import SourcePassage, FactCheckResult
+from modules.claim_extraction.Fact_Validator_Data_models import SourcePassage, FactCheckResult, print_fact_check_result
 from modules.llm.llm_openai import llm_openai
 from modules.llm.llm_reasoning import llm_reasoning 
-from modules.input_extraction.input_extractor import extract_claim_from_input
+from modules.input_extraction.input_extractor import CLAIM_TYPE, extract_claim_from_input
 
 
 class FactCheckingPipeline:
@@ -240,7 +240,7 @@ class FactCheckingPipeline:
                 return url.split("://")[1].split("/")[0]
             return url.split("/")[0]
         except Exception:
-            return "unknown"
+            return CLAIM_TYPE.UNKNOWN.name
 
     
     def retrieve_evidence(self, query: str, top_k: int = 20) -> List[SourcePassage]:
@@ -291,7 +291,7 @@ class FactCheckingPipeline:
             url = (
                 payload.get("source") or
                 payload.get("url") or
-                "unknown"
+                CLAIM_TYPE.UNKNOWN.name
             )
 
             # ----------------------------
@@ -351,12 +351,12 @@ class FactCheckingPipeline:
         # Call the currently selected LLM with the raw user text so its response can
         # be returned alongside the fact-check verdict.
         llm_response = None
-        try:
-            llm_response = self.llm.message(user_input)
-            preview = (llm_response or "None")[:100]
-            print(f"[process_query] LLM response preview: {preview}")
-        except Exception as llm_error:
-            print(f"LLM call failed: {llm_error}")
+        # try:
+        #     llm_response = self.llm.message(user_input)
+        #     preview = (llm_response or "None")[:100]
+        #     print(f"[process_query] LLM response preview: {preview}")
+        # except Exception as llm_error:
+        #     print(f"LLM call failed: {llm_error}")
         try:
             print("Extracting claim from user input...")
             claim_data = extract_claim_from_input(self.llm, user_input)
@@ -366,21 +366,21 @@ class FactCheckingPipeline:
                 if not claims:
                     return {
                         "claim": user_input,
-                        "verdict": "Not enough evidence",
+                        "verdict": "inconclusive",
                         "score": 0,
                         "citations": [],
                         "features": {},
                         "message": "No factual claims found in input"
                     }
                 claim_text = claims[0]["normalized"]
-                claim_type = claims[0].get("type", "unknown")
+                claim_type = claims[0].get("type", CLAIM_TYPE.UNKNOWN.name)
             else:
                 claim_text = user_input
-                claim_type = "unknown"
+                claim_type = CLAIM_TYPE.UNKNOWN.name
         except Exception as e:
             print(f"Claim extraction failed: {e}")
             claim_text = user_input
-            claim_type = "unknown"
+            claim_type = CLAIM_TYPE.UNKNOWN.name
         
         # Step 2: Retrieve evidence
         print("Retrieving evidence from knowledge base...")
@@ -389,12 +389,11 @@ class FactCheckingPipeline:
         
         if not passages:
             return {
-                "claim": claim_text,
-                "verdict": "Not enough evidence",
+                "verdict": "Inconclusive",
                 "score": 0,
                 "citations": [],
                 "features": {},
-                "message": "No relevant evidence found in knowledge base"
+                "message": "No relevant data found...yet! Will work on learning more over time."
             }
         
         # Step 3: Fact validation
@@ -408,7 +407,6 @@ class FactCheckingPipeline:
         
         # Step 4: Format response
         response = {
-            "claim": result.claim,
             "verdict": result.verdict,
             "score": result.score,
             "citations": [
@@ -429,7 +427,7 @@ class FactCheckingPipeline:
                 "recency_max": result.features.recency_weight_max
             },
             "raw_result": result,  # For debugging
-            "explanation": self.generate_explanation(result),
+            "explanation": self.generate_explanation(result, claim_type == CLAIM_TYPE.QUESTION.name, user_input),
             "llm_response": llm_response  # Surface direct model output for the UI if needed
 
         }
@@ -457,9 +455,6 @@ class FactCheckingPipeline:
         
         output = f"""
 {emoji} {response['verdict'].upper()} (Score: {response['score']}/100)
-
-Claim: "{response['claim']}"
-
 Evidence Summary:
 - Max Support: {response['features']['entail_max']:.2f}
 - Max Contradiction: {response['features']['contradict_max']:.2f}
@@ -473,9 +468,9 @@ Citations:
         
         return output.strip()
 
-    def generate_explanation(self, result: FactCheckResult) -> str:
+    def generate_explanation(self, result: FactCheckResult, is_question: bool, user_input: str) -> str:
         """Generate explanation using reasoning with full citation context"""
-        
+        print_fact_check_result(result)
         # Use all_evidence if available, fall back to citations
         evidence_to_analyze = result.all_evidence if result.all_evidence else result.citations
         
@@ -499,7 +494,7 @@ Citations:
         citations_text = "\n".join(citation_details)
         
         question = f"""Analyze this fact-check result:
-
+    User Input: {user_input}
     Claim: {result.claim}
     Verdict: {result.verdict}
     Score: {result.score}/100
@@ -514,9 +509,9 @@ Citations:
         
         print(f"[REASONING PROMPT]:\n{question[:500]}...")
         
-        explanation = self.reasoning_engine.reasoning_agent(question)
+        explanation = self.reasoning_engine.reasoning_agent(question, is_question)
         
-        print(f"[REASONING OUTPUT]: {explanation[:200]}...")
+        print(f"[REASONING OUTPUT]: {explanation}...")
         
         return explanation
 

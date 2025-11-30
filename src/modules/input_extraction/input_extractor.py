@@ -5,6 +5,7 @@ Claim extraction module using OpenAI API.
 Extracts structured, verifiable claims from user input.
 """
 
+from enum import Enum
 import os
 import json
 import re
@@ -21,29 +22,34 @@ from dotenv import load_dotenv
 
 MODEL_NAME = "gpt-4o-mini"
 
-
+class CLAIM_TYPE(Enum):
+    OTHER = 1
+    QUESTION = 2
+    CLAIM = 3
+    UNKNOWN = 4
+    
 def classify_input_category(text: str) -> str:
     """
     Classify the original user input as:
-      - "question": primarily interrogative (e.g., ends with '?', WH/aux start)
-      - "claim": a declarative statement likely containing an assertion
-      - "other": empty, pure opinion, or unclear
+      - CLAIM_TYPE.QUESTION.name: primarily interrogative (e.g., ends with '?', WH/aux start)
+      - CLAIM_TYPE.CLAIM.name: a declarative statement likely containing an assertion
+      - CLAIM_TYPE.OTHER.name: empty, pure opinion, or unclear
 
     This is a lightweight heuristic used to set the top-level `input_category`
     field, independent of the LLM.
     """
     if not text:
-        return "other"
+        return CLAIM_TYPE.OTHER.name
 
     s = text.strip()
     if not s:
-        return "other"
+        return CLAIM_TYPE.OTHER.name
 
     lower = s.lower()
 
     # If it clearly looks like a question
     if s.endswith("?"):
-        return "question"
+        return CLAIM_TYPE.QUESTION.name
 
     # Leading question phrases / auxiliaries
     question_starts = (
@@ -56,10 +62,10 @@ def classify_input_category(text: str) -> str:
         "is it true that", "do you think", "could it be that",
     )
     if lower.startswith(question_starts):
-        return "question"
+        return CLAIM_TYPE.QUESTION.name
 
     # Otherwise treat as a (potential) claim/statement by default
-    return "claim"
+    return CLAIM_TYPE.CLAIM.name
 
 
 SCHEMA_INSTRUCTIONS = """
@@ -72,16 +78,16 @@ Normalization means making the text syntactically clear and standalone, not corr
 If the input is false, biased, or implausible, you must preserve it exactly as asserted — do not rewrite it to be true.
 
 You must also determine whether the original INPUT TEXT is primarily a **question**, a **claim**, or **other**:
-- Use "question" if the user is asking whether a factual proposition is true or false (e.g., "Is it true that vaccines cause autism?").
-- Use "claim" if the user is directly asserting a proposition.
-- Use "other" if it does not primarily express a factual question or assertion.
+- Use CLAIM_TYPE.QUESTION.name if the user is asking whether a factual proposition is true or false (e.g., "Is it true that vaccines cause autism?").
+- Use CLAIM_TYPE.CLAIM.name if the user is directly asserting a proposition.
+- Use CLAIM_TYPE.OTHER.name if it does not primarily express a factual question or assertion.
 
 Even if the input is phrased as a question, you must still extract the underlying **proposition** as a normalized claim where possible.
 Example:
 - Input: "Is it true that Mexico is in Canada?"
   - normalized claim should be: "Mexico is located in Canada."
 
-### What counts as a "claim"?
+### What counts as a CLAIM_TYPE.CLAIM.name?
 - A claim must be an **assertion** or **fact** that can be verified as true/false or falsifiable (e.g., numerical, comparative, causational).
 - You must **exclude** opinions, perspectives, or rhetorical questions unless they contain checkable predicates.
 - Claims should be **context-independent** (e.g., causal statements, numerical data, temporal assertions).
@@ -234,8 +240,8 @@ def extract_claim_from_input(
                 "id": "C1",
                 "text_span": original_input,
                 "normalized": cleaned_input,
-                "type": "unknown",
-                "topic": "other",
+                "type": CLAIM_TYPE.UNKNOWN.name,
+                "topic": CLAIM_TYPE.OTHER.name,
                 "subject_entities": [],
                 "objects_entities": [],
                 "temporal": {"when_text": None, "when_iso": None},
@@ -249,7 +255,7 @@ def extract_claim_from_input(
                     "media_mentions": [],
                     "numbers_in_text": [],
                 },
-                "sensitivity": {"domain": ["other"], "harm_risk": "low"},
+                "sensitivity": {"domain": [CLAIM_TYPE.OTHER.name], "harm_risk": "low"},
                 "verifiability": {"is_checkable": False, "best_evidence_types": []},
                 "attribution": {"speaker": None, "speaker_type": None},
                 "context": {"surrounding_sentence": None, "thread_relation": "original"},

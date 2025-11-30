@@ -9,6 +9,8 @@ fi
 
 # Kill any existing backend on port 5005
 lsof -ti:5005 | xargs kill -9 2>/dev/null
+# windows version
+netstat -ano | findstr :5005 | awk '{print $5}' | xargs -I {} taskkill //F //PID {}
 
 # Activate Python venv if exists
 if [ -f "../.venv/Scripts/activate" ]; then
@@ -21,7 +23,7 @@ cd src
 BACKEND_PID=$!
 
 # Start frontend
-cd ../modules/frontend
+cd ./modules/frontend
 npx serve -s build -l 3000 &
 FRONTEND_PID=$!
 
