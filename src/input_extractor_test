@@ -1,0 +1,358 @@
+"""
+test_input_extractor.py
+
+NBA-focused test harness for the input_extractor module.
+
+Goals:
+- Initialize the same LLM backend used in the main pipeline
+- Call extract_claim_from_input() on lots of NBA-specific texts
+- Check:
+    - input_category   (question | claim | other) vs expected_category
+    - whether a normalized claim is extracted
+- Compare performance on:
+    - clean / structured NBA claims
+    - noisy NBA claims (abbreviations, typos, slang, missing characters)
+
+Usage (from project root):
+    python src/test_input_extractor.py
+    # or with a custom single input:
+    python src/test_input_extractor.py "Did the Nuggets win the 2023 title?"
+"""
+
+import os
+import sys
+import json
+from dotenv import load_dotenv
+
+from modules.input_extraction.input_extractor import extract_claim_from_input
+from modules.llm.llm_openai import llm_openai
+from modules.llm.llm_ollama import llm_ollama
+
+
+# ---------------------------------------------------------------------------
+# CLEAN / BASE NBA TEST CASES (100)
+# ---------------------------------------------------------------------------
+
+nba_test_cases = [
+    # ---------- 1–50 : PASS (factually correct NBA statements / questions) ----------
+    {"id": 1, "text": "LeBron James has won four NBA championships.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 2, "text": "Michael Jordan won six NBA titles with the Chicago Bulls.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 3, "text": "Stephen Curry was drafted by the Golden State Warriors in 2009.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 4, "text": "The Toronto Raptors are an NBA team based in Canada.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 5, "text": "The NBA regular season normally has 82 games per team.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 6, "text": "The San Antonio Spurs won five NBA championships with Tim Duncan.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 7, "text": "The Denver Nuggets won their first NBA championship in 2023.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 8, "text": "Giannis Antetokounmpo plays for the Milwaukee Bucks.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 9, "text": "Nikola Jokic is a center for the Denver Nuggets.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 10, "text": "The NBA introduced the three-point line in the 1979–80 season.", "expected_category": "claim", "expected_truth": "pass"},
+
+    {"id": 11, "text": "The Miami Heat won their first NBA title in 2006.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 12, "text": "The Chicago Bulls completed two separate three-peats in the 1990s.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 13, "text": "Dirk Nowitzki spent his entire NBA career with the Dallas Mavericks.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 14, "text": "Kobe Bryant scored 81 points in a single NBA game against the Raptors.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 15, "text": "The NBA Finals is a best-of-seven series.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 16, "text": "The Orlando Magic are based in the state of Florida.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 17, "text": "The Utah Jazz play their home games in Salt Lake City.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 18, "text": "The Los Angeles Lakers and Boston Celtics are two of the most storied franchises in NBA history.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 19, "text": "The Memphis Grizzlies moved from Vancouver to Memphis.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 20, "text": "The Oklahoma City Thunder used to be the Seattle SuperSonics.", "expected_category": "claim", "expected_truth": "pass"},
+
+    {"id": 21, "text": "Is it true that the Denver Nuggets won the 2023 NBA championship?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 22, "text": "Did the Golden State Warriors win the NBA title in 2015?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 23, "text": "Did the Cleveland Cavaliers come back from a 3–1 deficit in the 2016 NBA Finals?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 24, "text": "Did Kawhi Leonard win Finals MVP with both the Spurs and the Raptors?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 25, "text": "Is Stephen Curry widely regarded as one of the greatest shooters in NBA history?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 26, "text": "Did the Toronto Raptors win their first championship in 2019?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 27, "text": "Is Giannis Antetokounmpo a two-time NBA MVP?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 28, "text": "Did the San Antonio Spurs draft Tim Duncan with the first overall pick in 1997?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 29, "text": "Is Madison Square Garden the home arena of the New York Knicks?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 30, "text": "Did the Chicago Bulls complete a 72–10 regular season in 1995–96?", "expected_category": "question", "expected_truth": "pass"},
+
+    # Typos / slang but still true
+    {"id": 31, "text": "Bron got 4 rings, all facts.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 32, "text": "MJ got 6 chips with the Bulls, no losses in the Finals.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 33, "text": "Curry n Klay are known as the Splash Bros on the Warriors.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 34, "text": "Jokic be running point-center for the Nuggets fr.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 35, "text": "The Bucks won the chip in 2021 with Giannis going crazy.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 36, "text": "Lowkey, the Raptors’ 2019 run was led by Kawhi.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 37, "text": "The Splash Brothers set tons of three-point records in the 2010s.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 38, "text": "CP3 is widely considered one of the best pure point guards ever.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 39, "text": "The NBA’s MVP award stands for Most Valuable Player.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 40, "text": "KD has won multiple scoring titles in the NBA.", "expected_category": "claim", "expected_truth": "pass"},
+
+    # More structured / numerical but true
+    {"id": 41, "text": "The NBA has 30 teams divided into Eastern and Western Conferences.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 42, "text": "The three-point line in the NBA is 23 feet 9 inches at the top of the arc.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 43, "text": "In 2016, the Warriors set a regular-season record with 73 wins.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 44, "text": "Did the Phoenix Suns reach the NBA Finals in 2021?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 45, "text": "Is Gregg Popovich the long-time head coach of the San Antonio Spurs?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 46, "text": "Luka Dončić plays for the Dallas Mavericks.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 47, "text": "The NBA Draft Lottery determines the order of the top picks for non-playoff teams.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 48, "text": "The All-Star Game features star players from across the NBA each season.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 49, "text": "The Boston Celtics and Los Angeles Lakers each had 17 championships before Boston won another in the 2020s.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 50, "text": "The NBA’s Sixth Man of the Year award is given to a top-performing bench player.", "expected_category": "claim", "expected_truth": "pass"},
+
+    # ---------- 51–100 : FAIL (intentionally incorrect NBA statements / questions) ----------
+    {"id": 51, "text": "LeBron James has won six NBA championships.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 52, "text": "Michael Jordan won four NBA titles with the Chicago Bulls.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 53, "text": "Stephen Curry was drafted first overall by the Los Angeles Lakers.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 54, "text": "The Toronto Raptors are an NFL team based in Canada.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 55, "text": "The NBA regular season only has 50 games per team.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 56, "text": "The San Antonio Spurs have never won an NBA championship.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 57, "text": "The Denver Nuggets have won ten NBA championships.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 58, "text": "Giannis Antetokounmpo plays for the Los Angeles Clippers.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 59, "text": "Nikola Jokic is a point guard for the Miami Heat.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 60, "text": "The NBA introduced the three-point line in 1999.", "expected_category": "claim", "expected_truth": "fail"},
+
+    {"id": 61, "text": "The Miami Heat won their first NBA title in 2012.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 62, "text": "The Chicago Bulls never won a title with Michael Jordan.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 63, "text": "Dirk Nowitzki played his entire career for the San Antonio Spurs.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 64, "text": "Kobe Bryant’s career high in a game was 50 points.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 65, "text": "The NBA Finals is decided in a single elimination game.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 66, "text": "The Orlando Magic are based in New York City.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 67, "text": "The Utah Jazz play their home games in Seattle.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 68, "text": "The Los Angeles Lakers are an MLB baseball team.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 69, "text": "The Memphis Grizzlies moved from San Diego to Memphis.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 70, "text": "The Oklahoma City Thunder used to be the New Jersey Nets.", "expected_category": "claim", "expected_truth": "fail"},
+
+    {"id": 71, "text": "Did the Denver Nuggets win the 2010 NBA championship?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 72, "text": "Did the Golden State Warriors win 82 straight games in 2015–16?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 73, "text": "Did the Cleveland Cavaliers sweep the Warriors 4–0 in the 2016 Finals?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 74, "text": "Did Kawhi Leonard win Finals MVP with the Los Angeles Lakers in 2010?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 75, "text": "Is Stephen Curry a seven-time NBA MVP?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 76, "text": "Did the Toronto Raptors win their first championship in 1999?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 77, "text": "Is Giannis Antetokounmpo a six-time NBA MVP?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 78, "text": "Did the San Antonio Spurs draft Tim Duncan with the 30th overall pick?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 79, "text": "Is Madison Square Garden the home arena of the Los Angeles Lakers?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 80, "text": "Did the Chicago Bulls finish the 1995–96 season with a 50–32 record?", "expected_category": "question", "expected_truth": "fail"},
+
+    # Typos / slang but false
+    {"id": 81, "text": "Bron got 6 rings with the Lakers, easy.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 82, "text": "MJ never lost a playoff series in his whole career, deadass.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 83, "text": "Curry and Klay only play in the Eastern Conference fr.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 84, "text": "Jokic be playing shooting guard for Miami now.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 85, "text": "The Bucks won the chip in 2010 with Giannis.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 86, "text": "Lowkey, the Raptors’ 2019 run was carried by LeBron.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 87, "text": "The Splash Brothers play for the Los Angeles Clippers.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 88, "text": "CP3 has won five NBA championships as a player.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 89, "text": "The NBA MVP award is given to the best rookie every year.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 90, "text": "KD has never made an All-Star team.", "expected_category": "claim", "expected_truth": "fail"},
+
+    # More structured / numerical but false
+    {"id": 91, "text": "The NBA currently has 40 teams.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 92, "text": "The three-point line in the NBA is exactly 15 feet from the basket.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 93, "text": "In 2016, the Warriors finished the regular season with only 50 wins.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 94, "text": "Did the Phoenix Suns win the NBA championship in 2021?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 95, "text": "Is Gregg Popovich the long-time head coach of the Los Angeles Clippers?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 96, "text": "Luka Dončić plays for the New York Knicks.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 97, "text": "The NBA Draft Lottery is used to decide which team wins the Finals.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 98, "text": "The All-Star Game is only played every ten years.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 99, "text": "The Boston Celtics have already won 30 NBA championships.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 100, "text": "The Sixth Man of the Year award is given to the tallest player in the league.", "expected_category": "claim", "expected_truth": "fail"},
+]
+
+
+# ---------------------------------------------------------------------------
+# NOISY NBA TEST CASES (ABBREVIATIONS, TYPOS, MISSING CHARS)
+# ---------------------------------------------------------------------------
+
+nba_noisy_test_cases = [
+    # Mostly true but messy
+    {"id": 201, "text": "LBJ got 4 rngs in the NBA.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 202, "text": "MJ = 6x champ w/ CHI, 6-0 in the FInls.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 203, "text": "GSW won chips in '15, '17, '18 w/ Steph & KD.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 204, "text": "DEN finally got their 1st chip in 23 szn.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 205, "text": "Giannis 2x MVP, led MIL to the 21 title.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 206, "text": "Jokic is a C for DEN and has a couple MVPs.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 207, "text": "Did LBJ come back from 3–1 vs GSW in 2016?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 208, "text": "Kawhi got FMVP w/ SAS and TOR, right?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 209, "text": "KD has multiple scoring titles & 2 FMVPs.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 210, "text": "Spurs dynsty had TD, Manu, TP and Pop as HC.", "expected_category": "claim", "expected_truth": "pass"},
+
+    # Still NBA but intentionally wrong + noisy
+    {"id": 211, "text": "LBJ got 7 rngs all with LAL lol.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 212, "text": "MJ only won 3 chips total 4real.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 213, "text": "GSW won thier 1st ever title in 2019 vs TOR.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 214, "text": "DEN had like 5 chips b4 2000, I swear.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 215, "text": "Giannis got his ring in 2010 with PHX.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 216, "text": "Jokic is a PG for MIA and never won MVP.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 217, "text": "Did LBJ sweep GSW 4–0 in the 2016 FInals?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 218, "text": "Kawhi got FMVP for LAL in 2009, rite?", "expected_category": "question", "expected_truth": "fail"},
+    {"id": 219, "text": "KD never made an All Star gm, lowkey.", "expected_category": "claim", "expected_truth": "fail"},
+    {"id": 220, "text": "Spurs dynsty only ever won 1 chip tbh.", "expected_category": "claim", "expected_truth": "fail"},
+
+    # More brutal corruption
+    {"id": 221, "text": "brn 4x champ, 2 MIA 1 CLE 1 LAL (fr)", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 222, "text": "mj 6-0 in nba fnls, nevr lost there", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 223, "text": "curry hit lik 402 3s in 15-16 szn omg", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 224, "text": "wasnt it 73-9 gsw in 2016 reg szn?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 225, "text": "raps got their 1st chip 2019 w kawhi buzzer over philly", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 226, "text": "isnt luka on dal mavs rn?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 227, "text": "LAL + BOS got 17 chips each b4 the celtics latest win.", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 228, "text": "ny kncks play @ MSG in NYC", "expected_category": "claim", "expected_truth": "pass"},
+    {"id": 229, "text": "does nba rsn have 82 gms per tm (norml yr)?", "expected_category": "question", "expected_truth": "pass"},
+    {"id": 230, "text": "phx suns won the 2021 chip vs mil, right??", "expected_category": "question", "expected_truth": "fail"},
+]
+
+
+# Optional: set SHOW_FULL_JSON=1 in your .env if you want to see raw JSON
+SHOW_FULL_JSON = os.getenv("SHOW_FULL_JSON", "0").strip().lower() in {"1", "true", "yes"}
+
+
+# ---------------------------------------------------------------------------
+# LLM selection
+# ---------------------------------------------------------------------------
+
+def get_llm_from_env():
+    """
+    Initialize an LLM instance using the same pattern as the main pipeline.
+    Controlled by env var: LLM_PROVIDER = 'openai' | 'ollama'
+    """
+    provider = os.getenv("LLM_PROVIDER", "openai").strip().lower()
+
+    if provider == "openai":
+        print("[INFO] Using OpenAI backend (llm_openai)")
+        return llm_openai()
+    elif provider == "ollama":
+        print("[INFO] Using Ollama backend (llm_ollama)")
+        return llm_ollama()
+    else:
+        raise ValueError(
+            f"Unknown LLM_PROVIDER '{provider}'. "
+            "Set LLM_PROVIDER to 'openai' or 'ollama' in your environment."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test runner
+# ---------------------------------------------------------------------------
+
+def run_nba_test_case(llm, case, check_category: bool = True):
+    """
+    Run a single test case.
+
+    Returns:
+        (category_ok, extracted_ok)
+    """
+    cid = case["id"]
+    text = case["text"]
+    expected_cat = case["expected_category"]
+    expected_truth = case["expected_truth"]
+
+    print("=" * 120)
+    print(f"[CASE {cid}] INPUT:")
+    print(text)
+    print("-" * 120)
+
+    try:
+        result = extract_claim_from_input(llm, text)
+    except Exception as e:
+        print(f"[ERROR] extract_claim_from_input failed: {e}")
+        return False, False  # treat as failures
+
+    if SHOW_FULL_JSON:
+        print("OUTPUT JSON:")
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    predicted_cat = result.get("input_category")
+    claims = result.get("claims") or []
+    normalized = claims[0].get("normalized") if claims else None
+
+    if check_category and expected_cat not in {None, "(n/a)"}:
+        category_ok = (predicted_cat == expected_cat)
+    else:
+        category_ok = True  # don't penalize if we're not checking
+    extracted_ok = bool(normalized and isinstance(normalized, str) and normalized.strip())
+
+    print("Key fields:")
+    print("  expected_category:", expected_cat)
+    print("  predicted_category:", predicted_cat)
+    print("  category_match:", "PASS" if category_ok else "FAIL")
+    print("  expected_truth_label (ground truth):", expected_truth)
+    print("  normalized claim:", normalized)
+    print("  original_input:", result.get("original_input"))
+    print("  extracted_ok (non-empty normalized claim):", extracted_ok)
+    print("=" * 120)
+    print()
+
+    return category_ok, extracted_ok
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    # 1) Load .env for API keys and config
+    load_dotenv()
+
+    # 2) Initialize LLM backend
+    llm = get_llm_from_env()
+
+    # 3) Custom single-input mode
+    if len(sys.argv) > 1:
+        user_text = " ".join(sys.argv[1:])
+        case = {"id": "CUSTOM", "text": user_text,
+                "expected_category": "(n/a)", "expected_truth": "(n/a)"}
+        run_nba_test_case(llm, case, check_category=False)
+        return
+
+    # Stats for base set
+    total_base = len(nba_test_cases)
+    cat_ok_base = 0
+    extracted_ok_base = 0
+    truth_pass_base = sum(1 for c in nba_test_cases if c["expected_truth"] == "pass")
+    truth_fail_base = sum(1 for c in nba_test_cases if c["expected_truth"] == "fail")
+
+    print("\n" + "#" * 120)
+    print("# NBA INPUT EXTRACTOR TEST SUITE – BASE (CLEANER DATA)")
+    print("#" * 120 + "\n")
+
+    for case in nba_test_cases:
+        cat_ok, ext_ok = run_nba_test_case(llm, case, check_category=True)
+        cat_ok_base += int(cat_ok)
+        extracted_ok_base += int(ext_ok)
+
+    # Stats for noisy set
+    total_noisy = len(nba_noisy_test_cases)
+    cat_ok_noisy = 0
+    extracted_ok_noisy = 0
+    truth_pass_noisy = sum(1 for c in nba_noisy_test_cases if c["expected_truth"] == "pass")
+    truth_fail_noisy = sum(1 for c in nba_noisy_test_cases if c["expected_truth"] == "fail")
+
+    print("\n" + "#" * 120)
+    print("# NBA INPUT EXTRACTOR TEST SUITE – NOISY (ABBRS / TYPOS / SLANG)")
+    print("#" * 120 + "\n")
+
+    for case in nba_noisy_test_cases:
+        cat_ok, ext_ok = run_nba_test_case(llm, case, check_category=True)
+        cat_ok_noisy += int(cat_ok)
+        extracted_ok_noisy += int(ext_ok)
+
+    # 4) Summary
+    print("\n" + "#" * 120)
+    print("# SUMMARY – BASE SET (100 CASES)")
+    print("#" * 120)
+    print(f"Total base test cases: {total_base}")
+    print(f"Category matches: {cat_ok_base}/{total_base} ({cat_ok_base/total_base*100:.2f}%)")
+    print(f"Extraction success (non-empty normalized claim): {extracted_ok_base}/{total_base} "
+          f"({extracted_ok_base/total_base*100:.2f}%)")
+    print("Ground-truth factual labels in base dataset:")
+    print(f"  PASS (factually correct): {truth_pass_base} ({truth_pass_base/total_base*100:.1f}%)")
+    print(f"  FAIL (intentionally incorrect): {truth_fail_base} ({truth_fail_base/total_base*100:.1f}%)")
+
+    print("\n" + "#" * 120)
+    print("# SUMMARY – NOISY SET")
+    print("#" * 120)
+    print(f"Total noisy test cases: {total_noisy}")
+    print(f"Category matches: {cat_ok_noisy}/{total_noisy} ({cat_ok_noisy/total_noisy*100:.2f}%)")
+    print(f"Extraction success (non-empty normalized claim): {extracted_ok_noisy}/{total_noisy} "
+          f"({extracted_ok_noisy/total_noisy*100:.2f}%)")
+    print("Ground-truth factual labels in noisy dataset:")
+    print(f"  PASS (factually correct): {truth_pass_noisy} ({truth_pass_noisy/total_noisy*100:.1f}%)")
+    print(f"  FAIL (intentionally incorrect): {truth_fail_noisy} ({truth_fail_noisy/total_noisy*100:.1f}%)")
+    print("#" * 120)
+
+
+if __name__ == "__main__":
+    main()
