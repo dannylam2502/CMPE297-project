@@ -37,8 +37,8 @@ class FactCheckingPipeline:
         embedding_model: str = None,
         use_reasoning: bool = True,
         llm_provider: str = None,
-        qdrant_url: str = None,          # <-- NEW
-        qdrant_api_key: str = None       # <-- NEW
+        qdrant_url: str = None,         
+        qdrant_api_key: str = None      
     ):
         if llm_provider is None:
             raise ValueError("llm_provider must be specified")
@@ -457,7 +457,7 @@ class FactCheckingPipeline:
             "Refuted": "✗",
             "Contested": "~",
             "Not enough evidence": "?",
-            "Informational": "ℹ️"  # <-- New
+            "Informational": "ℹ️" 
         }
         
         emoji = verdict_emoji.get(response["verdict"], "?")
