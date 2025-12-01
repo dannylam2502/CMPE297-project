@@ -88,6 +88,8 @@ class FactCheckFeatures:
     entail_max: float
     entail_mean3: float
     contradict_max: float
+    contradict_mean3: float  
+    neutral_mean: float    
     agree_domain_count: int
     relevance_score_avg: float
     recency_weight_max: float
