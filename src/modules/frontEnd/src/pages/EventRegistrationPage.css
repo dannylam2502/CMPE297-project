@@ -1,0 +1,107 @@
+.nba-lite-page {
+  min-height: 100vh;
+  padding: clamp(28px, 7vw, 88px);
+  background: radial-gradient(circle at 15% 20%, rgba(12, 28, 72, 0.95), #02040c);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.nba-lite-shell {
+  width: min(960px, 100%);
+  display: grid;
+  gap: 24px;
+  color: #f5f8ff;
+}
+
+.nba-lite-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nba-lite-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.78rem;
+  color: #6fd6ff;
+}
+
+.nba-lite-title {
+  color: #ffffff !important;
+  margin: 0;
+}
+
+.nba-lite-subtitle {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1rem;
+  margin: 0;
+  max-width: 640px;
+}
+
+.nba-lite-note {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.85rem;
+}
+
+.nba-lite-card {
+  background: rgba(6, 10, 24, 0.96);
+  border-radius: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px rgba(2, 8, 26, 0.8);
+}
+
+.nba-lite-card .ant-card-body {
+  padding: clamp(28px, 6vw, 56px);
+}
+
+.nba-lite-form .ant-form-item-label > label {
+  color: #dde8ff;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.nba-lite-form .ant-input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 12px 16px;
+  color: #fdfdff;
+  font-weight: 500;
+}
+
+.nba-lite-form .ant-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.nba-lite-form .ant-input:focus {
+  border-color: rgba(125, 106, 255, 0.85);
+  box-shadow: 0 0 0 2px rgba(125, 106, 255, 0.35);
+}
+
+.nba-lite-button {
+  width: 100%;
+  height: 54px;
+  margin-top: 12px;
+  border-radius: 999px;
+  border: none;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: linear-gradient(135deg, #ffc05c, #f04c92, #7f4cff);
+  box-shadow: 0 16px 36px rgba(127, 76, 255, 0.35);
+}
+
+.nba-lite-button:hover,
+.nba-lite-button:focus {
+  background: linear-gradient(135deg, #ffd270, #ff6ca4, #9967ff);
+}
+
+@media (max-width: 640px) {
+  .nba-lite-page {
+    padding: 32px 18px;
+  }
+
+  .nba-lite-card {
+    border-radius: 20px;
+  }
+}
