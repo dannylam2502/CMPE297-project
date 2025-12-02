@@ -4,13 +4,15 @@ Provides REST API endpoint for the React frontend
 """
 from dotenv import load_dotenv
 load_dotenv()
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 import sys
 import os
 from pathlib import Path
+import sqlite3
 from threading import Lock           # Used to prevent race conditions when switching LLMs
 from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # -------------------------------------------------------------------------
 # Setup environment and paths
@@ -26,14 +28,82 @@ os.chdir(PROJECT_ROOT)  # Change working directory to project root
 # Load .env from project root
 load_dotenv(PROJECT_ROOT / '.env')
 
+# -------------------------------------------------------------------------
+# SQLite helper functions for user authentication
+# -------------------------------------------------------------------------
+BACKEND_DB_DIR = PROJECT_ROOT / "src" / "modules" / "backEnd"
+BACKEND_DB_PATH = BACKEND_DB_DIR / "users.db"
+USER_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+
+def get_db_connection() -> sqlite3.Connection:
+    """Create or open the SQLite database stored under src/modules/backEnd/users.db."""
+    BACKEND_DB_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(BACKEND_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def ensure_users_schema(conn: sqlite3.Connection) -> None:
+    """Ensure the users table matches the latest schema (full_name-based)."""
+    cursor = conn.execute("PRAGMA table_info(users)")
+    columns = {row["name"] for row in cursor.fetchall()}
+    if not columns:
+        conn.execute(USER_TABLE_SQL)
+        conn.commit()
+        return
+    if "full_name" in columns and "username" not in columns:
+        return
+    if "username" in columns:
+        conn.execute("ALTER TABLE users RENAME TO users_legacy")
+        conn.execute(USER_TABLE_SQL)
+        conn.execute(
+            """
+            INSERT INTO users (id, full_name, email, password_hash, created_at)
+            SELECT id, username, email, password_hash, created_at FROM users_legacy
+            """
+        )
+        conn.execute("DROP TABLE users_legacy")
+        conn.commit()
+        return
+    # Fallback: drop and recreate if schema is unrecognized
+    conn.execute("DROP TABLE users")
+    conn.execute(USER_TABLE_SQL)
+    conn.commit()
+
+
+def init_db() -> None:
+    """Initialize the users table if it does not exist."""
+    conn = get_db_connection()
+    try:
+        conn.execute(USER_TABLE_SQL)
+        conn.commit()
+        ensure_users_schema(conn)
+    finally:
+        conn.close()
+
 from pipeline import FactCheckingPipeline
 
 # -------------------------------------------------------------------------
 # Flask app setup
 # -------------------------------------------------------------------------
 app = Flask(__name__)
-CORS(app)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key")
+CORS(
+    app,
+    resources={r"/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}},
+    supports_credentials=True,
+)
 pipeline_lock = Lock()
+init_db()
 
 # -------------------------------------------------------------------------
 # Initialize pipeline once at startup
@@ -310,6 +380,97 @@ def toggle_reasoning():
 #         'status': 'ok',
 #         'llm_provider': normalized
 #     })
+
+
+@app.route('/login', methods=['POST'])
+def login_user():
+    """Authenticate a user and establish a session."""
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get("email") or "").strip()
+    password = payload.get("password") or ""
+
+    if not email or not password:
+        return jsonify({
+            "success": False,
+            "message": "Email and password are required"
+        }), 400
+
+    conn = get_db_connection()
+    try:
+        user = conn.execute(
+            "SELECT id, full_name, email, password_hash FROM users WHERE email = ?",
+            (email,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not user or not check_password_hash(user["password_hash"], password):
+        return jsonify({
+            "success": False,
+            "message": "Invalid email or password"
+        }), 401
+
+    session["user_id"] = user["id"]
+    session["user_email"] = user["email"]
+    session["user_name"] = user["full_name"]
+    return jsonify({
+        "success": True,
+        "message": "Login successful"
+    })
+
+
+@app.route('/logout', methods=['POST'])
+def logout_user():
+    """Clear the session for the current user."""
+    session.clear()
+    return jsonify({
+        "success": True,
+        "message": "Logged out successfully"
+    })
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register_user():
+    """Register a new user with hashed credentials in SQLite."""
+    if request.method == 'GET':
+        return jsonify({
+            "message": "Registration endpoint is active. Use POST to submit user data."
+        })
+
+    payload = request.get_json(silent=True) or {}
+    full_name = (payload.get("full_name") or "").strip()
+    email = (payload.get("email") or "").strip()
+    password = payload.get("password") or ""
+
+    if not full_name or not email or not password:
+        return jsonify({
+            "success": False,
+            "message": "Full name, email, and password are required"
+        }), 400
+
+    password_hash = generate_password_hash(password)
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO users (full_name, email, password_hash)
+            VALUES (?, ?, ?)
+            """,
+            (full_name, email, password_hash)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        return jsonify({
+            "success": False,
+            "message": "Email already registered"
+        }), 400
+    finally:
+        conn.close()
+
+    return jsonify({
+        "success": True,
+        "message": "User registered successfully"
+    }), 201
 
 if __name__ == '__main__':
     PORT = int(os.environ.get('PORT', 5005))

@@ -10,11 +10,11 @@ from datetime import datetime, timezone
 
 
 # [!] IMPORT CHANGES
-from sklearn.preprocessing import LabelEncoder  # <-- Corrected import
+from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier # <-- NEW
-# from sklearn.tree import DecisionTreeClassifier # <-- REMOVED
+from sklearn.ensemble import RandomForestClassifier
+# from sklearn.tree import DecisionTreeClassifier
 
 from modules.claim_extraction.training.Validator_Training_Data import GoldStandardExample
 from modules.llm.llm_engine_interface import LLMInterface
@@ -57,16 +57,24 @@ class FactValidator:
         print("FactValidator is ready.")
 
     def _prepare_features(self, features: 'FactCheckFeatures', num_agree: int, num_disagree: int, len_valid_results: int, len_passages: int) -> np.ndarray:
+        
+        # Avoid division by zero
+        total = len_valid_results if len_valid_results > 0 else 1
+        
         feature_vector = [
             features.entail_max,
             features.entail_mean3,
             features.contradict_max,
+            features.contradict_mean3, # [!] Added
+            features.neutral_mean,     # [!] Added
             features.agree_domain_count,
             features.relevance_score_avg,
             features.recency_weight_max,
             features.contest_score,
             num_agree,
             num_disagree,
+            num_agree / total,    # [!] Added Ratio
+            num_disagree / total, # [!] Added Ratio
             len_valid_results,
             len_passages
         ]
@@ -120,7 +128,21 @@ class FactValidator:
     def _calculate_recency(self, published_at: datetime) -> Tuple[float, bool]:
         if not published_at:
             return (0.5, False)
-        days_diff = (datetime.now(timezone.utc) - published_at).days
+            
+        # 1. Get current time (Aware)
+        now = datetime.now(timezone.utc)
+
+        # 2. Normalize published_at to be Timezone-Aware
+        if published_at.tzinfo is None:
+            # If the date has no timezone, give it UTC
+            published_at = published_at.replace(tzinfo=timezone.utc)
+        else:
+            # If it has a timezone, convert it to UTC just to be safe
+            published_at = published_at.astimezone(timezone.utc)
+
+        # 3. Calculate difference
+        days_diff = (now - published_at).days
+        
         if days_diff < 30:
             return (1.0, True)
         elif days_diff < 365:
@@ -129,18 +151,27 @@ class FactValidator:
 
     def _calculate_features(self, valid_results: List[CitationValidationScoring]) -> FactCheckFeatures:
         if not valid_results:
-            return FactCheckFeatures(0, 0, 0, 0, 0, 0)
+            return FactCheckFeatures(0, 0, 0, 0, 0, 0, 0, 0, 0) # Update constructor args
 
         entail_probs = sorted([r.entail_prob for r in valid_results if r.entail_prob > 0.1], reverse=True) 
         contra_probs = sorted([r.contradict_prob for r in valid_results if r.contradict_prob > 0.1], reverse=True)
+        # [!] NEW: Track neutrals
+        neutral_probs = [r.neutral_prob for r in valid_results]
+
         domains = {r.passage.domain for r in valid_results if r.entail_prob > self.agree_cut}
         
         entail_max = entail_probs[0] if entail_probs else 0.0
         contradict_max = contra_probs[0] if contra_probs else 0.0
+        
         return FactCheckFeatures(
             entail_max=entail_max,
             entail_mean3=np.mean(entail_probs[:3]) if entail_probs else 0.0,
             contradict_max=contradict_max,
+            # [!] NEW: Symmetry for contradiction
+            contradict_mean3=np.mean(contra_probs[:3]) if contra_probs else 0.0,
+            # [!] NEW: Neutrality signal
+            neutral_mean=np.mean(neutral_probs) if neutral_probs else 0.0,
+            
             agree_domain_count=len(domains),
             relevance_score_avg=np.mean([r.passage.relevance_score for r in valid_results]),
             recency_weight_max=max(r.recency_weight for r in valid_results),
@@ -301,12 +332,12 @@ class FactValidator:
         for i, item in enumerate(train_dataset):
             # 1. Use the *passed-in validator's* method to process the text
             # This ensures we use the same settings (e.g., related_gate)
-            features, num_a, num_d, len_v, len_p = self.generate_training_example( # <-- CHANGED
+            features, num_a, num_d, len_v, len_p = self.generate_training_example(
                 item.claim, item.passages
             )
             
             # 2. Get the feature vector
-            feature_vector_1d = self._prepare_features( # <-- CHANGED
+            feature_vector_1d = self._prepare_features(
                 features, num_a, num_d, len_v, len_p
             )[0]
             
@@ -319,6 +350,24 @@ class FactValidator:
 
         # Convert to NumPy arrays for scikit-learn
         X_train = np.array(X_train_list)
+
+        # [!] NEW: Inject Synthetic Data HERE
+        print("\nInjecting synthetic training data...")
+        synth_X, synth_y = self.generate_synthetic_data(n_samples_per_class=100)
+        
+        # Combine Real + Synthetic arrays
+        # Note: X_train_list is currently a list of arrays, make it an array first
+        X_real = np.array(X_train_list)
+        
+        if len(X_real) > 0:
+            X_train = np.vstack([X_real, synth_X])
+            y_train_raw = y_labels + synth_y
+        else:
+            # If you have NO real data yet, train purely on synthetic
+            X_train = synth_X
+            y_train_raw = synth_y
+
+        print(f"Final Training Set Size: {len(X_train)} (Real: {len(X_real)}, Synthetic: {len(synth_X)})")
         print(f"\nFeature matrix (X) shape: {X_train.shape}")
         print(f"Labels (y) to be encoded: {y_labels}")
 
@@ -326,7 +375,7 @@ class FactValidator:
 
         # 1. Train the Label Encoder
         encoder = LabelEncoder()
-        y_train = encoder.fit_transform(y_labels)
+        y_train = encoder.fit_transform(y_train_raw)
         print(f"\nEncoded labels: {y_train}")
         print(f"Encoder classes: {encoder.classes_}")
 
@@ -366,7 +415,7 @@ class FactValidator:
         correct_predictions = 0
         for i, test_example in enumerate(test_dataset):
             # Run the full validation pipeline on the validator we just trained
-            result = self.validate_claim(test_example.claim, '', test_example.passages) # <-- CHANGED
+            result = self.validate_claim(test_example.claim, '', test_example.passages)
             
             expected = test_example.ground_truth_verdict
             predicted = result.verdict
@@ -399,6 +448,99 @@ class FactValidator:
         ))
 
 
+    def generate_synthetic_data(self, n_samples_per_class=50):
+        """
+        Generates synthetic feature vectors to teach the model clear boundaries
+        between Supported, Refuted, and Contested without needing real text.
+        """
+        import random
+        synthetic_X = []
+        synthetic_y = []
+
+        # 1. Generate "Supported" Archetypes
+        # Logic: High entailment, Low contradiction
+        for _ in range(n_samples_per_class):
+            e_max = random.uniform(0.75, 0.99)
+            c_max = random.uniform(0.01, 0.15)
+            
+            feats = FactCheckFeatures(
+                entail_max=e_max,
+                entail_mean3=e_max - random.uniform(0.0, 0.1),
+                contradict_max=c_max,
+                contradict_mean3=c_max, # Low contra
+                neutral_mean=random.uniform(0.0, 0.2),
+                agree_domain_count=random.randint(2, 5),
+                relevance_score_avg=random.uniform(0.7, 0.9),
+                recency_weight_max=1.0,
+                contest_score=e_max * c_max # Will be low
+            )
+            
+            # We need to manually construct the raw vector like _prepare_features does
+            # Note: We simulate counts (num_agree) based on the probabilities
+            vec = self._prepare_features(
+                feats, 
+                num_agree=3, num_disagree=0, 
+                len_valid_results=3, len_passages=5
+            )[0]
+            
+            synthetic_X.append(vec)
+            synthetic_y.append("Supported")
+
+        # 2. Generate "Refuted" Archetypes
+        # Logic: Low entailment, High contradiction
+        for _ in range(n_samples_per_class):
+            e_max = random.uniform(0.01, 0.15)
+            c_max = random.uniform(0.75, 0.99)
+            
+            feats = FactCheckFeatures(
+                entail_max=e_max,
+                entail_mean3=e_max,
+                contradict_max=c_max,
+                contradict_mean3=c_max - random.uniform(0.0, 0.1),
+                neutral_mean=random.uniform(0.0, 0.2),
+                agree_domain_count=0,
+                relevance_score_avg=random.uniform(0.7, 0.9),
+                recency_weight_max=1.0,
+                contest_score=e_max * c_max # Will be low
+            )
+            
+            vec = self._prepare_features(
+                feats, 
+                num_agree=0, num_disagree=3, 
+                len_valid_results=3, len_passages=5
+            )[0]
+            
+            synthetic_X.append(vec)
+            synthetic_y.append("Refuted")
+
+        # 3. Generate "Contested" Archetypes
+        # Logic: High Entailment AND High Contradiction
+        for _ in range(n_samples_per_class):
+            e_max = random.uniform(0.60, 0.90)
+            c_max = random.uniform(0.60, 0.90)
+            
+            feats = FactCheckFeatures(
+                entail_max=e_max,
+                entail_mean3=e_max - 0.1,
+                contradict_max=c_max,
+                contradict_mean3=c_max - 0.1,
+                neutral_mean=random.uniform(0.0, 0.3),
+                agree_domain_count=random.randint(1, 3),
+                relevance_score_avg=random.uniform(0.7, 0.9),
+                recency_weight_max=1.0,
+                contest_score=e_max * c_max # Will be HIGH
+            )
+            
+            vec = self._prepare_features(
+                feats, 
+                num_agree=2, num_disagree=2, # Even split
+                len_valid_results=4, len_passages=6
+            )[0]
+            
+            synthetic_X.append(vec)
+            synthetic_y.append("Contested")
+
+        return np.array(synthetic_X), synthetic_y
     def _load(self):
         """Loads the classifier and encoder from the specified model_path."""
         if not os.path.exists(self.model_path):

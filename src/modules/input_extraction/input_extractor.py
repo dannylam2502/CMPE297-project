@@ -69,32 +69,12 @@ def classify_input_category(text: str) -> str:
 
 
 SCHEMA_INSTRUCTIONS = """
-You are ClaimExtractor, a careful NLP tool that extracts clean, verifiable claims from messy text to combat misinformation. 
+You are ClaimExtractor. Extract verifiable data from text.
 
 ## Task
-From the given INPUT TEXT, extract the **atomic factual claim** that is suitable for fact checking.
-This will be a single cleaned but semantically faithful claim.
-Normalization means making the text syntactically clear and standalone, not correcting, negating, or fact-checking it.
-If the input is false, biased, or implausible, you must preserve it exactly as asserted — do not rewrite it to be true.
-
-You must also determine whether the original INPUT TEXT is primarily a **question**, a **claim**, or **other**:
-- Use CLAIM_TYPE.QUESTION.name if the user is asking whether a factual proposition is true or false (e.g., "Is it true that vaccines cause autism?").
-- Use CLAIM_TYPE.CLAIM.name if the user is directly asserting a proposition.
-- Use CLAIM_TYPE.OTHER.name if it does not primarily express a factual question or assertion.
-
-Even if the input is phrased as a question, you must still extract the underlying **proposition** as a normalized claim where possible.
-Example:
-- Input: "Is it true that Mexico is in Canada?"
-  - normalized claim should be: "Mexico is located in Canada."
-
-### What counts as a CLAIM_TYPE.CLAIM.name?
-- A claim must be an **assertion** or **fact** that can be verified as true/false or falsifiable (e.g., numerical, comparative, causational).
-- You must **exclude** opinions, perspectives, or rhetorical questions unless they contain checkable predicates.
-- Claims should be **context-independent** (e.g., causal statements, numerical data, temporal assertions).
-
-### Output Format
-Return a **strict JSON** that matches the SCHEMA below. Do not add commentary.
-Do not add fields that are not listed in the schema.
+1. Determine if the input is a **Specific Claim** (True/False proposition) or a **Broad/Open Question**.
+2. If it is a **Specific Claim**, extract it into `claims[0]`.
+3. If it is a **Broad Question** (e.g., "Compare Lebron and Jordan", "History of Warriors"), you must **Decompose** it into 2-4 specific `sub_search_queries` that would find the answer.
 
 ### SCHEMA
 {
@@ -104,12 +84,15 @@ Do not add fields that are not listed in the schema.
     "source_type": "string",
     "extraction_quality_note": "string"
   },
+  "is_broad_query": true|false,  // Set to true if the question requires multiple pieces of info
+  "sub_search_queries": ["string"], // Keywords/phrases to search DB if broad
   "claims": [
     {
       "id": "C1",
       "text_span": "string",
-      "normalized": "string",
+      "normalized": "string", // The atomic claim (if specific) or main topic (if broad)
       "type": "string",
+            "type": "string",
       "topic": "string",
       "subject_entities": [ {"name":"string","type":"string"} ],
       "objects_entities":  [ {"name":"string","type":"string"} ],
@@ -147,6 +130,7 @@ Do not add fields that are not listed in the schema.
         "surrounding_sentence": "string|null",
         "thread_relation": "original|reply|quote|reshare|unknown"
       }
+      "stance": "string"
     }
   ],
   "non_claim_spans": ["string"]
@@ -162,6 +146,9 @@ Do not add fields that are not listed in the schema.
   Example: If input says "Mexico is in Canada", the normalized claim must keep the same meaning ("Mexico is located in Canada"), NOT "Mexico is not in Canada".
 - Normalization is limited to grammar, casing, or removing fillers.
   Do not introduce negation, modality, or correction unless they already exist in the input.
+- If **Specific**: `is_broad_query` = false, `sub_search_queries` = [].
+- If **Broad**: `is_broad_query` = true, `sub_search_queries` = ["query 1", "query 2"].
+- `normalized`: For broad questions, just summarize the topic (e.g., "Comparison of Lebron and Jordan stats").
 """
 
 def call_to_structure(llm: LLMInterface, text: str) -> str:
