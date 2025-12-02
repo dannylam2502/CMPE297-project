@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import ChatComponent from "./components/ChatComponent";
 import RenderQA from "./components/RenderQA";
-import { Layout, Typography, Space, Button } from "antd";
-import { GithubOutlined, ExperimentOutlined } from "@ant-design/icons";
+import { Layout, Typography, Space, Button, message } from "antd";
+import { GithubOutlined } from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
 
 const { Header, Content, Footer } = Layout;
 const { Title, Text } = Typography;
@@ -42,6 +43,16 @@ const App = () => {
 
   // Default to OpenAI GPT-4o-Mini to stay consistent with backend `/set-llm`
   const [selectedLLM, setSelectedLLM] = useState("gpt-4o-mini");
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    try {
+      return Boolean(localStorage.getItem("nbaInsightUser"));
+    } catch (error) {
+      console.warn("Unable to read auth state:", error);
+      return false;
+    }
+  });
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const navigate = useNavigate();
 
   const handleResp = (question, answer) => {
     setConversation((prev) =>
@@ -68,6 +79,47 @@ const App = () => {
       setReasoningEnabled(data.reasoning_enabled);
     } catch (error) {
       console.error('Error toggling reasoning:', error);
+    }
+  };
+
+  useEffect(() => {
+    const syncAuthState = () => {
+      try {
+        setIsLoggedIn(Boolean(localStorage.getItem("nbaInsightUser")));
+      } catch (error) {
+        console.warn("Unable to sync auth state:", error);
+        setIsLoggedIn(false);
+      }
+    };
+
+    window.addEventListener("storage", syncAuthState);
+    return () => window.removeEventListener("storage", syncAuthState);
+  }, []);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      const response = await fetch("http://localhost:5005/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success === false) {
+        throw new Error(data.message || "Logout failed. Please try again.");
+      }
+      message.success(data.message || "Logged out successfully");
+    } catch (error) {
+      message.error(error.message || "Logout failed. Please try again.");
+    } finally {
+      try {
+        localStorage.removeItem("nbaInsightUser");
+      } catch (storageError) {
+        console.warn("Unable to clear auth state:", storageError);
+      }
+      setIsLoggedIn(false);
+      setIsLoggingOut(false);
+      navigate("/login");
     }
   };
 
@@ -119,6 +171,16 @@ const App = () => {
           >
             Reasoning: {reasoningEnabled ? "ON" : "OFF"}
           </Button>
+          {Boolean(isLoggedIn) && (
+            <Button
+              type="primary"
+              size="small"
+              onClick={handleLogout}
+              loading={isLoggingOut}
+            >
+              Logout
+            </Button>
+          )}
           <Button
             type="link"
             href="https://github.com/yourusername/fact-checking"
