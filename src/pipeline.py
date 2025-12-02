@@ -21,6 +21,7 @@ from modules.claim_extraction.Fact_Validator_Data_models import SourcePassage, F
 from modules.llm.llm_openai import llm_openai
 from modules.llm.llm_reasoning import llm_reasoning 
 from modules.input_extraction.input_extractor import CLAIM_TYPE, extract_claim_from_input
+from modules.claim_extraction.training.Validator_Training_Data import get_training_data
 
 
 class FactCheckingPipeline:
@@ -36,8 +37,8 @@ class FactCheckingPipeline:
         embedding_model: str = None,
         use_reasoning: bool = True,
         llm_provider: str = None,
-        qdrant_url: str = None,          # <-- NEW
-        qdrant_api_key: str = None       # <-- NEW
+        qdrant_url: str = None,         
+        qdrant_api_key: str = None      
     ):
         if llm_provider is None:
             raise ValueError("llm_provider must be specified")
@@ -83,6 +84,7 @@ class FactCheckingPipeline:
             nli_model_name="roberta-large-mnli",
             nli_labels=NLI_LABELS
         )
+        # self.fact_validator = FactValidator(self.llm, nli, training_data=get_training_data())
         self.fact_validator = FactValidator(self.llm, nli, training_data=None)
 
         # Reasoning
@@ -325,135 +327,152 @@ class FactCheckingPipeline:
     
     def process_query(self, user_input: str) -> Dict[str, Any]:
         """
-        Main pipeline entry point.
-        
-        Pipeline steps:
-        1. Extract claim from user input (Danny's module)
-        2. Retrieve evidence from vector DB (Adam's module)
-        3. Validate claim against evidence (Sam's module)
-        4. Format response for LLM/UI
-        
-        Args:
-            user_input: Raw user query text
-            
-        Returns:
-            Dict with:
-                - claim: Extracted claim text
-                - verdict: "Supported" | "Refuted" | "Not enough evidence" | "Contested"
-                - score: int (0-100)
-                - citations: List of citation dicts
-                - features: Feature scores dict
-                - raw_result: Full FactCheckResult object
+        Main pipeline entry point with Logic Routing.
         """
         
-        # Step 1: Extract claim
+        # 1. Extract claim/intent
+        print("Extracting claim/intent...")
+        claim_data = extract_claim_from_input(self.llm, user_input)
+        
+        # Get LLM's classification
+        is_broad = claim_data.get("is_broad_query", False)
+        sub_queries = claim_data.get("sub_search_queries", [])
+        
+        # ---------------------------------------------------------
+        # [!] HEURISTIC OVERRIDE
+        # If the input starts with Open-Ended Question words, FORCE the Broad/QA path.
+        # This prevents "What team..." being treated as a True/False claim.
+        # ---------------------------------------------------------
+        open_ended_triggers = ("what", "which", "who", "where", "how", "list", "describe", "explain", "compare")
+        if user_input.lower().strip().startswith(open_ended_triggers):
+            print(f"[Pipeline] Heuristic Override: Detected open-ended question '{user_input.split()[0]}...'")
+            is_broad = True
+            # If LLM didn't generate sub-queries, use the user input itself
+            if not sub_queries:
+                sub_queries = [user_input]
 
-        # Call the currently selected LLM with the raw user text so its response can
-        # be returned alongside the fact-check verdict.
-        llm_response = None
-        # try:
-        #     llm_response = self.llm.message(user_input)
-        #     preview = (llm_response or "None")[:100]
-        #     print(f"[process_query] LLM response preview: {preview}")
-        # except Exception as llm_error:
-        #     print(f"LLM call failed: {llm_error}")
-        try:
-            print("Extracting claim from user input...")
-            claim_data = extract_claim_from_input(self.llm, user_input)
-            print("Extracted claim data:", claim_data)
-            if isinstance(claim_data, dict) and "claims" in claim_data:
-                claims = claim_data["claims"]
-                if not claims:
-                    return {
-                        "claim": user_input,
-                        "verdict": "inconclusive",
-                        "score": 0,
-                        "citations": [],
-                        "features": {},
-                        "message": "No factual claims found in input"
-                    }
-                claim_text = claims[0]["normalized"]
-                claim_type = claims[0].get("type", CLAIM_TYPE.UNKNOWN.name)
-            else:
-                claim_text = user_input
-                claim_type = CLAIM_TYPE.UNKNOWN.name
-        except Exception as e:
-            print(f"Claim extraction failed: {e}")
+        # Get the "normalized" text (or fallback to user input)
+        if claim_data.get("claims"):
+            claim_text = claim_data["claims"][0]["normalized"]
+            claim_type = claim_data["claims"][0].get("type", "CLAIM")
+        else:
             claim_text = user_input
-            claim_type = CLAIM_TYPE.UNKNOWN.name
-        
-        # Step 2: Retrieve evidence
-        print("Retrieving evidence from knowledge base...")
-        passages = self.retrieve_evidence(claim_text, top_k=20)
-        print(f"Retrieved {len(passages)} passages")
-        
-        if not passages:
-            return {
-                "verdict": "Inconclusive",
-                "score": 0,
-                "citations": [],
-                "features": {},
-                "message": "No relevant data found...yet! Will work on learning more over time."
-            }
-        
-        # Step 3: Fact validation
-        print("Validating claim against evidence...")
-        result: FactCheckResult = self.fact_validator.validate_claim(
-            claim=claim_text,
-            claim_type=claim_type,
-            passages=passages
-        )
-        print(f"Validation result: Verdict={result.verdict}, Score={result.score}")
-        
-        # Step 4: Format response
-        response = {
-            "verdict": result.verdict,
-            "score": result.score,
-            "citations": [
-                {
-                    "url": c.passage.url,
-                    "title": c.passage.title,
-                    "published_at": c.passage.published_at.isoformat() if isinstance(c.passage.published_at, datetime) else str(c.passage.published_at),
-                    "snippet": c.passage.content[:200]
-                }
-                for c in result.citations
-            ],
-            "features": {
-                "entail_max": result.features.entail_max,
-                "entail_mean3": result.features.entail_mean3,
-                "contradict_max": result.features.contradict_max,
-                "agree_domain_count": result.features.agree_domain_count,
-                "relevance_avg": result.features.relevance_score_avg,
-                "recency_max": result.features.recency_weight_max
-            },
-            "raw_result": result,  # For debugging
-            "explanation": self.generate_explanation(result, claim_type == CLAIM_TYPE.QUESTION.name, user_input),
-            "llm_response": llm_response  # Surface direct model output for the UI if needed
+            claim_type = "QUESTION"
 
-        }
-        
-        return response
+        # --- BRANCH 1: BROAD QUESTION / QA MODE ---
+        # We enter this if the LLM flagged it OR our Heuristic flagged it
+        if is_broad:
+            print(f"[Pipeline] Running QA Mode. Queries: {sub_queries}")
+            
+            all_passages = []
+            seen_urls = set()
+            
+            # 1. Multi-hop Retrieval
+            # If sub_queries is empty (rare case), default to claim_text
+            queries_to_run = sub_queries if sub_queries else [claim_text]
+            
+            for query in queries_to_run:
+                hits = self.retrieve_evidence(query, top_k=5)
+                for hit in hits:
+                    if hit.url not in seen_urls:
+                        all_passages.append(hit)
+                        seen_urls.add(hit.url)
+            
+            print(f"[Pipeline] Retrieved {len(all_passages)} unique passages for QA.")
+            
+            # 2. Generate Answer (Synthesis)
+            # We skip the NLI Validator entirely here.
+            
+            context_text = "\n\n".join([f"Source ({p.domain}): {p.content}" for p in all_passages[:7]])
+            
+            prompt = f"""You are an intelligent assistant. Answer the user's question based ONLY on the evidence provided below.
+            
+            User Question: "{user_input}"
+            
+            Retrieved Evidence:
+            {context_text}
+            
+            Instructions:
+            1. Answer the question directly.
+            2. Cite the specific sources (domains) used.
+            3. If the evidence mentions conflicting info (e.g. different teams), explain the conflict.
+            4. If the evidence is missing the answer, say "I couldn't find that specific information in the database."
+            """
+            
+            summary = self.llm.message(prompt)
+            
+            # 3. Return "Informational" Verdict for UI
+            return {
+                "claim": user_input,
+                "verdict": "Informational", # This triggers the 'i' icon in UI
+                "score": 100, 
+                "citations": [
+                    {
+                        "title": p.title,
+                        "url": p.url,
+                        "snippet": p.content[:150]
+                    } for p in all_passages[:5]
+                ],
+                "features": {
+                    "entail_max": 0, "contradict_max": 0, "agree_domain_count": 0,
+                    "relevance_avg": 0, "recency_max": 0
+                },
+                "explanation": summary, # The actual answer
+                "is_broad_answer": True
+            }
+
+        # --- BRANCH 2: SPECIFIC CLAIM VERIFICATION ---
+        else:
+            print("[Pipeline] Detected Specific Claim. Running Fact Verification.")
+            
+            # Step 2: Retrieve
+            passages = self.retrieve_evidence(claim_text, top_k=20)
+            
+            # Step 3: Validate
+            result = self.fact_validator.validate_claim(
+                claim=claim_text,
+                claim_type=claim_type,
+                passages=passages
+            )
+            
+            # Step 4: Format
+            return {
+                "verdict": result.verdict,
+                "score": result.score,
+                "citations": [
+                     {
+                        "url": c.passage.url,
+                        "title": c.passage.title,
+                        "snippet": c.passage.content[:200]
+                    } for c in result.citations
+                ],
+                # Ensure features are serializable (dict)
+                "features": asdict(result.features) if hasattr(result.features, "__dataclass_fields__") else result.features.__dict__,
+                "explanation": self.generate_explanation(result, claim_type == "QUESTION", user_input)
+            }
     
     def format_for_ui(self, response: Dict[str, Any]) -> str:
-        """
-        Format response for UI display.
-        
-        Args:
-            response: Output from process_query
-            
-        Returns:
-            Formatted string for display
-        """
         verdict_emoji = {
-            "Supported": "âœ“",
-            "Refuted": "âœ—",
+            "Supported": "✓",
+            "Refuted": "✗",
             "Contested": "~",
-            "Not enough evidence": "?"
+            "Not enough evidence": "?",
+            "Informational": "ℹ️" 
         }
         
         emoji = verdict_emoji.get(response["verdict"], "?")
         
-        output = f"""
+        # If broad answer, show the explanation prominently
+        if response.get("is_broad_answer"):
+            output = f"""
+{emoji} ANALYSIS
+{response['explanation']}
+
+Sources Used:
+"""
+        else:
+            # Standard Fact Check Output
+            output = f"""
 {emoji} {response['verdict'].upper()} (Score: {response['score']}/100)
 Evidence Summary:
 - Max Support: {response['features']['entail_max']:.2f}
