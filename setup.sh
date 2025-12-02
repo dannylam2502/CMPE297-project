@@ -1,5 +1,6 @@
 #!/bin/sh
 
+<<<<<<< Updated upstream
 # Auto-detect Python on macOS/Linux, fallback to existing Windows path
 if [ -z "$PYTHON" ]; then
     case "$(uname -s)" in
@@ -10,6 +11,8 @@ if [ -z "$PYTHON" ]; then
 fi
 
 PYTHON=${PYTHON:-"/c/Users/asabry/AppData/Local/Programs/Python/Python312/python.exe"}
+=======
+>>>>>>> Stashed changes
 
 set -e
 
@@ -31,31 +34,49 @@ if [ ! -d ".venv" ]; then
 fi
 
 echo "Activating virtual environment..."
+<<<<<<< Updated upstream
 if [ -f ".venv/bin/activate" ]; then
     . .venv/bin/activate
 elif [ -f ".venv/Scripts/activate" ]; then
     . .venv/Scripts/activate
 else
     echo "Virtual environment activation script not found."
+=======
+
+if [ -f .venv/bin/activate ]; then
+    . .venv/bin/activate
+elif [ -f .venv/Scripts/activate ]; then
+    . .venv/Scripts/activate
+else
+    echo "ERROR: Activation script not found in .venv/bin/ or .venv/Scripts/"
+>>>>>>> Stashed changes
     exit 1
 fi
 
 echo "Installing Python dependencies..."
-pip install -r requirements.txt
-
+pip install -r requirements.txt 2>&1 | grep -v "Requirement already satisfied" || true
 # -------------------------------------------------------------
 # FRONTEND BUILD
 # -------------------------------------------------------------
 if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)" ]; then
     printf "Frontend already built. Rebuild? (y/n): "
     read -r rebuild
-    if [ "$rebuild" = "y" ] || [ "$rebuild" = "Y" ]; then
-        (cd src/modules/frontend && npm install && npm run build)
-    else
-        echo "Skipping rebuild."
-    fi
+    case "$rebuild" in
+        [Yy]*)
+            echo "Installing frontend dependencies..."
+            (cd src/modules/frontend && npm install)
+            echo "Building frontend..."
+            (cd src/modules/frontend && npm run build)
+            ;;
+        *)
+            echo "Skipping rebuild."
+            ;;
+    esac
 else
-    (cd src/modules/frontend && npm install && npm run build)
+    echo "Installing frontend dependencies..."
+    (cd src/modules/frontend && npm install)
+    echo "Building frontend..."
+    (cd src/modules/frontend && npm run build)
 fi
 
 # -------------------------------------------------------------

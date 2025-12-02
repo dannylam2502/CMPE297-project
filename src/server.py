@@ -49,9 +49,13 @@ print(f"  LLM Provider: {LLM_PROVIDER}")
 print(f"  Project Root: {PROJECT_ROOT}")
 
 # Use absolute paths from project root
-QDRANT_URL = os.environ["QDRANT_URL"]
-QDRANT_API_KEY = os.environ["QDRANT_API_KEY"]
+QDRANT_URL = os.environ.get("QDRANT_URL")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 
+if not QDRANT_URL or not QDRANT_API_KEY:
+    print("ERROR: QDRANT_URL or QDRANT_API_KEY is missing.")
+    print("Check your .env file and ensure these values are set.")
+    sys.exit(1) # Stop the server gracefully
 
 # Initialize pipeline
 pipeline = FactCheckingPipeline(
