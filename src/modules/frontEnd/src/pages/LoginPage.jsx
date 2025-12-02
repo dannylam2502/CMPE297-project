@@ -1,5 +1,5 @@
-import React from "react";
-import { Card, Typography, Form, Input, Button } from "antd";
+import React, { useState } from "react";
+import { Card, Typography, Form, Input, Button, message } from "antd";
 import { useNavigate } from "react-router-dom";
 import "./LoginPage.css";
 
@@ -8,10 +8,39 @@ const { Title, Paragraph } = Typography;
 const LoginPage = () => {
   const [form] = Form.useForm();
   const navigate = useNavigate();
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleFinish = (values) => {
-    console.log("Signin payload:", values);
-    navigate("/");
+  const handleFinish = async (values) => {
+    setSubmitting(true);
+    try {
+      const response = await fetch("http://localhost:5005/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email: values.email,
+          password: values.password,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success === false) {
+        throw new Error(data.message || "Login failed. Please try again.");
+      }
+      try {
+        localStorage.setItem(
+          "nbaInsightUser",
+          JSON.stringify({ email: values.email })
+        );
+      } catch (error) {
+        console.warn("Unable to persist login:", error);
+      }
+      message.success(data.message || "Login successful");
+      navigate("/");
+    } catch (error) {
+      message.error(error.message || "Login failed. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -61,6 +90,7 @@ const LoginPage = () => {
               type="primary"
               htmlType="submit"
               className="nba-auth-button"
+              loading={submitting}
             >
               Sign In
             </Button>
