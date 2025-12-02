@@ -1,0 +1,61 @@
+.nba-signout-page {
+  min-height: 100vh;
+  padding: clamp(28px, 7vw, 88px);
+  background: radial-gradient(circle at 15% 20%, rgba(12, 28, 72, 0.95), #02040c);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.nba-signout-shell {
+  width: min(520px, 100%);
+  color: #f5f8ff;
+}
+
+.nba-signout-card {
+  background: rgba(6, 10, 24, 0.96);
+  border-radius: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px rgba(2, 8, 26, 0.8);
+  text-align: center;
+}
+
+.nba-signout-card .ant-card-body {
+  padding: clamp(32px, 6vw, 60px);
+}
+
+.nba-signout-title {
+  color: #ffffff !important;
+  margin-bottom: 12px;
+}
+
+.nba-signout-copy {
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 24px;
+}
+
+.nba-signout-button {
+  width: 100%;
+  height: 54px;
+  border-radius: 999px;
+  border: none;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: linear-gradient(135deg, #ffc05c, #f04c92, #7f4cff);
+  box-shadow: 0 16px 36px rgba(127, 76, 255, 0.35);
+}
+
+.nba-signout-button:hover,
+.nba-signout-button:focus {
+  background: linear-gradient(135deg, #ffd270, #ff6ca4, #9967ff);
+}
+
+@media (max-width: 560px) {
+  .nba-signout-page {
+    padding: 32px 18px;
+  }
+
+  .nba-signout-card {
+    border-radius: 20px;
+  }
+}
