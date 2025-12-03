@@ -171,7 +171,7 @@ const App = () => {
           >
             Reasoning: {reasoningEnabled ? "ON" : "OFF"}
           </Button>
-          {Boolean(isLoggedIn) && (
+          {isLoggedIn ? (
             <Button
               type="primary"
               size="small"
@@ -180,10 +180,26 @@ const App = () => {
             >
               Logout
             </Button>
+          ) : (
+            <>
+              <Button
+                type="primary"
+                size="small"
+                onClick={() => navigate("/login")}
+              >
+                Login
+              </Button>
+              <Button
+                size="small"
+                onClick={() => navigate("/registration")}
+              >
+                Register
+              </Button>
+            </>
           )}
           <Button
             type="link"
-            href="https://github.com/yourusername/fact-checking"
+            href="https://github.com/dannylam2502/CMPE297-project"
             target="_blank"
             icon={<GithubOutlined />}
             style={{ color: "white" }}

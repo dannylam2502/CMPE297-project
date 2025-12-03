@@ -1,24 +1,25 @@
 #!/bin/sh
+set -e
 
-# Auto-detect Python on macOS/Linux, fallback to existing Windows path
+# Auto-detect Python
 if [ -z "$PYTHON" ]; then
     case "$(uname -s)" in
         Darwin|Linux)
             PYTHON="$(command -v python3 || command -v python || true)"
             ;;
+        *)
+            # Windows/MINGW fallback
+            PYTHON="${PYTHON:-python}"
+            ;;
     esac
 fi
-
-PYTHON=${PYTHON:-"/c/Users/asabry/AppData/Local/Programs/Python/Python312/python.exe"}
-
-set -e
 
 echo "=== Fact-Checking System Setup (Cloud Edition) ==="
 
 # -------------------------------------------------------------
 # REQUIREMENTS
 # -------------------------------------------------------------
-command -v $PYTHON >/dev/null 2>&1 || { echo "Python 3 required"; exit 1; }
+command -v "$PYTHON" >/dev/null 2>&1 || { echo "Python 3 required"; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "Node.js required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
 
@@ -27,7 +28,7 @@ command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
 # -------------------------------------------------------------
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."
-    $PYTHON -m venv .venv
+    "$PYTHON" -m venv .venv
 fi
 
 echo "Activating virtual environment..."
@@ -36,24 +37,27 @@ if [ -f ".venv/bin/activate" ]; then
 elif [ -f ".venv/Scripts/activate" ]; then
     . .venv/Scripts/activate
 else
-    echo "Virtual environment activation script not found."
+    echo "ERROR: Activation script not found in .venv/bin/ or .venv/Scripts/"
     exit 1
 fi
 
 echo "Installing Python dependencies..."
-pip install -r requirements.txt
+pip install -r requirements.txt 2>&1 | grep -v "Requirement already satisfied" || true
 
 # -------------------------------------------------------------
 # FRONTEND BUILD
 # -------------------------------------------------------------
-if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build)" ]; then
+if [ -d "src/modules/frontend/build" ] && [ "$(ls -A src/modules/frontend/build 2>/dev/null)" ]; then
     printf "Frontend already built. Rebuild? (y/n): "
     read -r rebuild
-    if [ "$rebuild" = "y" ] || [ "$rebuild" = "Y" ]; then
-        (cd src/modules/frontend && npm install && npm run build)
-    else
-        echo "Skipping rebuild."
-    fi
+    case "$rebuild" in
+        [Yy]*)
+            (cd src/modules/frontend && npm install && npm run build)
+            ;;
+        *)
+            echo "Skipping rebuild."
+            ;;
+    esac
 else
     (cd src/modules/frontend && npm install && npm run build)
 fi
@@ -63,12 +67,14 @@ fi
 # -------------------------------------------------------------
 if [ ! -f .env ]; then
     echo "Creating .env..."
-    echo "OPENAI_API_KEY=" > .env
-    echo "LLM_PROVIDER=openai" >> .env
-    echo "EMBEDDING_MODEL=intfloat/e5-small-v2" >> .env
-    echo "HF_HOME=./data/models" >> .env
-    echo "QDRANT_URL=" >> .env
-    echo "QDRANT_API_KEY=" >> .env
+    cat > .env << 'ENVEOF'
+OPENAI_API_KEY=
+LLM_PROVIDER=openai
+EMBEDDING_MODEL=intfloat/e5-small-v2
+HF_HOME=./data/models
+QDRANT_URL=
+QDRANT_API_KEY=
+ENVEOF
 fi
 
 echo "Using .env from project root."
@@ -98,11 +104,11 @@ echo "Checking embeddings model cache..."
 EMBEDDING_MODEL=$(grep "^EMBEDDING_MODEL=" .env | cut -d'=' -f2)
 export HF_HOME=$(grep "^HF_HOME=" .env | cut -d'=' -f2)
 
-$PYTHON - <<EOF
+"$PYTHON" - <<EOF
 from sentence_transformers import SentenceTransformer
 print("Loading embedding model ($EMBEDDING_MODEL)...")
 SentenceTransformer("$EMBEDDING_MODEL")
-print("✓ Embedding model available")
+print("Embedding model available")
 EOF
 
 # -------------------------------------------------------------
@@ -113,10 +119,12 @@ echo "Your ingestion script pushes data directly to Qdrant Cloud."
 echo "To run it now: python src/ingest_news_to_qdrant.py"
 
 printf "Run ingestion now? (y/n): "
-read ingest_now
-if [ "$ingest_now" = "y" ] || [ "$ingest_now" = "Y" ]; then
-    python src/ingest_news_to_qdrant.py
-fi
+read -r ingest_now
+case "$ingest_now" in
+    [Yy]*)
+        "$PYTHON" src/ingest_news_to_qdrant.py
+        ;;
+esac
 
 # -------------------------------------------------------------
 # DONE

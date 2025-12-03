@@ -1,20 +1,24 @@
 #!/bin/bash
+set -e
 
-# Determine Python runner per OS
+# Determine Python command
 PYRUN="python"
-OS_NAME="$(uname -s)"
-if [ "$OS_NAME" = "Darwin" ] || [ "$OS_NAME" = "Linux" ]; then
-    PYRUN="python3"
+case "$(uname -s)" in
+    Darwin|Linux)
+        PYRUN="python3"
+        ;;
+esac
+
+# Kill existing backend on port 5005
+if command -v lsof >/dev/null 2>&1; then
+    lsof -ti:5005 2>/dev/null | xargs kill -9 2>/dev/null || true
 fi
 
-# Kill any existing backend on port 5005
-lsof -ti:5005 | xargs kill -9 2>/dev/null
-# windows version
-netstat -ano | findstr :5005 | awk '{print $5}' | xargs -I {} taskkill //F //PID {}
-
-# Activate Python venv if exists
-if [ -f "../.venv/Scripts/activate" ]; then
-    source ../.venv/Scripts/activate
+# Activate venv
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+elif [ -f ".venv/Scripts/activate" ]; then
+    source .venv/Scripts/activate
 fi
 
 # Start backend
@@ -32,5 +36,8 @@ echo " Backend:  http://localhost:5005"
 echo " Frontend: http://localhost:3000"
 echo "===================================="
 
-trap "kill $BACKEND_PID $FRONTEND_PID" EXIT
+cleanup() {
+    kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
 wait

@@ -70,10 +70,10 @@ const FeatureDisplay = ({ features }) => {
     <Space direction="vertical" style={{ width: '100%' }} size="small">
       <Text strong>Evidence Analysis:</Text>
       <div style={{ paddingLeft: '16px' }}>
-        <Text>â€¢ Max Entailment: <Text code>{features.entail_max?.toFixed(2) || 'N/A'}</Text></Text><br />
-        <Text>â€¢ Max Contradiction: <Text code>{features.contradict_max?.toFixed(2) || 'N/A'}</Text></Text><br />
-        <Text>â€¢ Agreeing Domains: <Text code>{features.agree_domain_count || 0}</Text></Text><br />
-        <Text>â€¢ Avg Relevance: <Text code>{features.relevance_avg?.toFixed(2) || 'N/A'}</Text></Text>
+        <Text>• Max Entailment: <Text code>{features.entail_max?.toFixed(2) || 'N/A'}</Text></Text><br />
+        <Text>• Max Contradiction: <Text code>{features.contradict_max?.toFixed(2) || 'N/A'}</Text></Text><br />
+        <Text>• Agreeing Domains: <Text code>{features.agree_domain_count || 0}</Text></Text><br />
+        <Text>• Avg Relevance: <Text code>{features.relevance_avg?.toFixed(2) || 'N/A'}</Text></Text>
       </div>
     </Space>
   );

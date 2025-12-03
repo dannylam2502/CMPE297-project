@@ -4,15 +4,13 @@ Provides REST API endpoint for the React frontend
 """
 from dotenv import load_dotenv
 load_dotenv()
+
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 import sys
 import os
 from pathlib import Path
-import sqlite3
-from threading import Lock           # Used to prevent race conditions when switching LLMs
-from dotenv import load_dotenv
-from werkzeug.security import generate_password_hash, check_password_hash
+from threading import Lock
 
 # -------------------------------------------------------------------------
 # Setup environment and paths
@@ -21,76 +19,13 @@ SERVER_DIR = Path(__file__).parent.resolve()
 if SERVER_DIR.name == 'src':
     PROJECT_ROOT = SERVER_DIR.parent
 else:
-    # server.py is at project root
     PROJECT_ROOT = SERVER_DIR
-os.chdir(PROJECT_ROOT)  # Change working directory to project root
+os.chdir(PROJECT_ROOT)
 
-# Load .env from project root
 load_dotenv(PROJECT_ROOT / '.env')
 
-# -------------------------------------------------------------------------
-# SQLite helper functions for user authentication
-# -------------------------------------------------------------------------
-BACKEND_DB_DIR = PROJECT_ROOT / "src" / "modules" / "backEnd"
-BACKEND_DB_PATH = BACKEND_DB_DIR / "users.db"
-USER_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    full_name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-"""
-
-
-def get_db_connection() -> sqlite3.Connection:
-    """Create or open the SQLite database stored under src/modules/backEnd/users.db."""
-    BACKEND_DB_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(BACKEND_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def ensure_users_schema(conn: sqlite3.Connection) -> None:
-    """Ensure the users table matches the latest schema (full_name-based)."""
-    cursor = conn.execute("PRAGMA table_info(users)")
-    columns = {row["name"] for row in cursor.fetchall()}
-    if not columns:
-        conn.execute(USER_TABLE_SQL)
-        conn.commit()
-        return
-    if "full_name" in columns and "username" not in columns:
-        return
-    if "username" in columns:
-        conn.execute("ALTER TABLE users RENAME TO users_legacy")
-        conn.execute(USER_TABLE_SQL)
-        conn.execute(
-            """
-            INSERT INTO users (id, full_name, email, password_hash, created_at)
-            SELECT id, username, email, password_hash, created_at FROM users_legacy
-            """
-        )
-        conn.execute("DROP TABLE users_legacy")
-        conn.commit()
-        return
-    # Fallback: drop and recreate if schema is unrecognized
-    conn.execute("DROP TABLE users")
-    conn.execute(USER_TABLE_SQL)
-    conn.commit()
-
-
-def init_db() -> None:
-    """Initialize the users table if it does not exist."""
-    conn = get_db_connection()
-    try:
-        conn.execute(USER_TABLE_SQL)
-        conn.commit()
-        ensure_users_schema(conn)
-    finally:
-        conn.close()
-
 from pipeline import FactCheckingPipeline
+from modules.backEnd.auth import AuthDB
 
 # -------------------------------------------------------------------------
 # Flask app setup
@@ -103,13 +38,13 @@ CORS(
     supports_credentials=True,
 )
 pipeline_lock = Lock()
-init_db()
+
+# Initialize auth database
+auth_db = AuthDB(PROJECT_ROOT / "src" / "modules" / "backEnd" / "users.db")
 
 # -------------------------------------------------------------------------
-# Initialize pipeline once at startup
+# Initialize pipeline
 # -------------------------------------------------------------------------
-
-
 LLM_PROVIDER = os.environ.get('LLM_PROVIDER')
 if not LLM_PROVIDER:
     raise ValueError("LLM_PROVIDER not set. Run setup.sh first.")
@@ -118,12 +53,14 @@ print("\nInitializing Fact-Checking Pipeline...")
 print(f"  LLM Provider: {LLM_PROVIDER}")
 print(f"  Project Root: {PROJECT_ROOT}")
 
-# Use absolute paths from project root
-QDRANT_URL = os.environ["QDRANT_URL"]
-QDRANT_API_KEY = os.environ["QDRANT_API_KEY"]
+QDRANT_URL = os.environ.get("QDRANT_URL")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 
+if not QDRANT_URL or not QDRANT_API_KEY:
+    print("ERROR: QDRANT_URL or QDRANT_API_KEY is missing.")
+    print("Check your .env file and ensure these values are set.")
+    sys.exit(1)
 
-# Initialize pipeline
 pipeline = FactCheckingPipeline(
     use_reasoning=True,
     llm_provider=LLM_PROVIDER,
@@ -131,85 +68,61 @@ pipeline = FactCheckingPipeline(
     qdrant_api_key=QDRANT_API_KEY
 )
 
-# -------------------------------------------------------------------------
-# Verify Qdrant database and warn if ingestion is missing
-# -------------------------------------------------------------------------
+# Verify Qdrant
 collection_name = "nba_claims"
 try:
     size = pipeline.vector_db.get_collection_size()
     if size == 0:
-        print(f" Qdrant collection '{collection_name}' is empty.")
-        print(f"    → Run ingestion manually: python src/modules/misinformation_module/src/ingest_nba.py")
+        print(f"Qdrant collection '{collection_name}' is empty.")
+        print("  Run: python src/modules/misinformation_module/src/ingest_nba.py")
     else:
-        print(f" Qdrant collection '{collection_name}' loaded successfully with {size} entries.")
+        print(f"Qdrant collection '{collection_name}' loaded: {size} entries")
 except Exception as e:
-    print(f" Could not check collection size: {e}")
-    print("    → Run ingestion manually if you haven't already.")
+    print(f"Could not check collection size: {e}")
+
 
 # -------------------------------------------------------------------------
-# Flask API endpoints
+# Pipeline management
 # -------------------------------------------------------------------------
-
-
-# ============================================
-# Function: rebuild_pipeline
-# ============================================
 def rebuild_pipeline(new_provider: str) -> bool:
-    """
-    Reinitialize the fact-checking pipeline with a different LLM provider (OpenAI or Ollama).
-    Returns True if switched successfully, False if no change was needed.
-    """
+    """Reinitialize pipeline with different LLM provider."""
     global pipeline, LLM_PROVIDER
 
-    # Normalize the incoming LLM name
     normalized_provider = (new_provider or '').lower()
     if normalized_provider not in ('openai', 'ollama'):
         raise ValueError(f"Invalid LLM provider: {new_provider}")
-    
-    # Lock ensures no other process changes pipeline during rebuild
+
     with pipeline_lock:
         try:
             if hasattr(pipeline, "vector_db") and hasattr(pipeline.vector_db, "client"):
-                pipeline.vector_db.client.close()  # Free older qdrant
-                print("Closed previous Qdrant client.")
+                pipeline.vector_db.client.close()
         except Exception as e:
-            print(f"Warning: could not close Qdrant client: {e}")          
+            print(f"Warning: could not close Qdrant client: {e}")
 
         current_provider = (LLM_PROVIDER or '').lower()
         if normalized_provider == current_provider:
-            print(f"LLM provider already set to '{LLM_PROVIDER}'. No changes made.")
             return False
-        
-        # Log the provider switch
-        print(f"Switching LLM provider: {LLM_PROVIDER} → {normalized_provider}")
-        print("Reinitializing fact-checking pipeline with requested provider...")
-        current_reasoning = getattr(pipeline, 'use_reasoning', True)
+
+        print(f"Switching LLM provider: {LLM_PROVIDER} -> {normalized_provider}")
         new_pipeline = FactCheckingPipeline(
-            use_reasoning=current_reasoning,
+            use_reasoning=getattr(pipeline, 'use_reasoning', True),
             llm_provider=normalized_provider,
             qdrant_url=QDRANT_URL,
             qdrant_api_key=QDRANT_API_KEY
         )
 
-
-        # Replace old pipeline with new one
         pipeline = new_pipeline
         LLM_PROVIDER = normalized_provider
-        print(f"LLM provider switched successfully to '{LLM_PROVIDER}'.")
         return True
 
+
+# -------------------------------------------------------------------------
+# API Routes: Fact-checking
+# -------------------------------------------------------------------------
 @app.route('/chat', methods=['GET', 'POST'])
 def chat():
-    """
-    Main chat endpoint that processes user queries.
-    
-    GET params: ?question=<user_query>
-    POST body: {"question": "<user_query>"}
-    
-    Returns: JSON response with verdict, score, explanation, citations
-    """
+    """Process user queries through fact-checking pipeline."""
     try:
-        # Support both GET and POST
         if request.method == 'GET':
             question = request.args.get('question', '')
         else:
@@ -227,14 +140,10 @@ def chat():
                 "features": {}
             }), 400
 
-        # Only use NBA data
         pipeline.available_collections = ["nba_claims"]
-
-        # Run query through pipeline
         result = pipeline.process_query(question)
 
-        # Prepare JSON for frontend
-        response = {
+        return jsonify({
             "claim": result.get("claim", question),
             "verdict": result.get("verdict", "Error"),
             "score": result.get("score", 0),
@@ -242,77 +151,27 @@ def chat():
             "citations": result.get("citations", []),
             "features": result.get("features", {}),
             "formatted_text": pipeline.format_for_ui(result)
-        }
-
-        return jsonify(response)
+        })
 
     except Exception as e:
         print(f"Error processing query: {e}")
         import traceback
         traceback.print_exc()
-        
+
         return jsonify({
             'error': str(e),
             'claim': question if 'question' in locals() else '',
             'verdict': 'Error',
             'score': 0,
-            'explanation': f'An error occurred while processing your request: {str(e)}',
+            'explanation': f'An error occurred: {str(e)}',
             'citations': [],
             'features': {}
         }), 500
 
 
-# ============================================
-# Route: /set-llm
-# ============================================
-# @app.route('/set-llm', methods=['POST'])
-# def set_llm():
-#     """
-#     Endpoint to switch the active LLM provider between OpenAI and Ollama.
-#     Called by the frontend dropdown in LLMSelector.jsx.
-#     """
-#     try:
-#          # Read JSON input from frontend
-#         data = request.get_json(silent=True) or {}
-#         requested_provider = (data.get('llm_provider') or '').lower()
-        
-#         # Validate provider name
-#         if requested_provider not in ('openai', 'ollama'):
-#             return jsonify({
-#                 'error': 'Invalid llm_provider value',
-#                 'allowed_providers': ['openai', 'ollama']
-#             }), 400
-        
-#         # Log the incoming switch request
-#         print(f"/set-llm request received: {requested_provider}")
-
-#         # Try to rebuild the pipeline with the new provider
-#         changed = rebuild_pipeline(requested_provider)
-
-#         # Return message depending on whether a change was needed
-#         message = (
-#             f"LLM provider already set to '{LLM_PROVIDER}'."
-#             if not changed else
-#             f"LLM provider switched to '{LLM_PROVIDER}'."
-#         )
-        
-#         # Return response to frontend
-#         return jsonify({
-#             'status': 'ok',
-#             'llm_provider': LLM_PROVIDER,
-#             'message': message
-#         })
-    
-#     except Exception as e:
-#         # Handle any unexpected backend errors
-#         print(f"Error handling /set-llm request: {e}")
-#         import traceback
-#         traceback.print_exc()
-#         return jsonify({'error': str(e)}), 500
-
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint"""
+    """Health check endpoint."""
     return jsonify({
         "status": "ok",
         "service": "fact-checking-api",
@@ -322,7 +181,7 @@ def health():
 
 @app.route("/toggle-reasoning", methods=["POST"])
 def toggle_reasoning():
-    """Toggle reasoning engine on/off"""
+    """Toggle reasoning engine on/off."""
     try:
         data = request.get_json()
         enable = data.get('enable', True)
@@ -334,104 +193,42 @@ def toggle_reasoning():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# --- Runtime LLM Provider Switching ---
-# This route and helper method allow developers to change the backend model
-# (OpenAI or Ollama) without restarting the Flask server.
-# Safe extension: does not modify any teammate’s code.
-# @app.route('/set-llm', methods=['POST'])
-# def set_llm():
-#     """
-#     Switch the active LLM provider at runtime.
-    
-#     Expected JSON payload: {"llm_provider": "openai" | "ollama"}
-#     Returns the normalized provider so the frontend can confirm which model is live.
-#     """
-#     try:
-#         data = request.get_json(silent=True) or {}
-#     except Exception:
-#         data = {}
-    
-#     requested_provider = (data.get('llm_provider') or "").strip()
-#     if not requested_provider:
-#         return jsonify({
-#             'error': "Missing 'llm_provider' in request body.",
-#             'allowed_providers': ['openai', 'ollama']
-#         }), 400
-    
-#     try:
-#         normalized = pipeline.set_llm_provider(requested_provider)
-#     except ValueError as ve:
-#         return jsonify({
-#             'error': str(ve),
-#             'allowed_providers': ['openai', 'ollama']
-#         }), 400
-#     except Exception as exc:
-#         print(f"Error switching LLM provider: {exc}")
-#         return jsonify({
-#             'error': 'Failed to update LLM provider.',
-#             'details': str(exc)
-#         }), 500
-    
-#     return jsonify({
-#         'status': 'ok',
-#         'llm_provider': normalized
-#     })
 
-
+# -------------------------------------------------------------------------
+# API Routes: Authentication
+# -------------------------------------------------------------------------
 @app.route('/login', methods=['POST'])
 def login_user():
-    """Authenticate a user and establish a session."""
+    """Authenticate user and establish session."""
     payload = request.get_json(silent=True) or {}
     email = (payload.get("email") or "").strip()
     password = payload.get("password") or ""
 
     if not email or not password:
-        return jsonify({
-            "success": False,
-            "message": "Email and password are required"
-        }), 400
+        return jsonify({"success": False, "message": "Email and password are required"}), 400
 
-    conn = get_db_connection()
-    try:
-        user = conn.execute(
-            "SELECT id, full_name, email, password_hash FROM users WHERE email = ?",
-            (email,),
-        ).fetchone()
-    finally:
-        conn.close()
-
-    if not user or not check_password_hash(user["password_hash"], password):
-        return jsonify({
-            "success": False,
-            "message": "Invalid email or password"
-        }), 401
+    user = auth_db.authenticate(email, password)
+    if not user:
+        return jsonify({"success": False, "message": "Invalid email or password"}), 401
 
     session["user_id"] = user["id"]
     session["user_email"] = user["email"]
     session["user_name"] = user["full_name"]
-    return jsonify({
-        "success": True,
-        "message": "Login successful"
-    })
+    return jsonify({"success": True, "message": "Login successful"})
 
 
 @app.route('/logout', methods=['POST'])
 def logout_user():
-    """Clear the session for the current user."""
+    """Clear session."""
     session.clear()
-    return jsonify({
-        "success": True,
-        "message": "Logged out successfully"
-    })
+    return jsonify({"success": True, "message": "Logged out successfully"})
 
 
 @app.route('/register', methods=['GET', 'POST'])
 def register_user():
-    """Register a new user with hashed credentials in SQLite."""
+    """Register new user."""
     if request.method == 'GET':
-        return jsonify({
-            "message": "Registration endpoint is active. Use POST to submit user data."
-        })
+        return jsonify({"message": "Registration endpoint is active. Use POST to submit user data."})
 
     payload = request.get_json(silent=True) or {}
     full_name = (payload.get("full_name") or "").strip()
@@ -439,39 +236,22 @@ def register_user():
     password = payload.get("password") or ""
 
     if not full_name or not email or not password:
-        return jsonify({
-            "success": False,
-            "message": "Full name, email, and password are required"
-        }), 400
+        return jsonify({"success": False, "message": "Full name, email, and password are required"}), 400
 
-    password_hash = generate_password_hash(password)
-    conn = get_db_connection()
-    try:
-        conn.execute(
-            """
-            INSERT INTO users (full_name, email, password_hash)
-            VALUES (?, ?, ?)
-            """,
-            (full_name, email, password_hash)
-        )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        return jsonify({
-            "success": False,
-            "message": "Email already registered"
-        }), 400
-    finally:
-        conn.close()
+    success, message = auth_db.register(full_name, email, password)
+    if not success:
+        return jsonify({"success": False, "message": message}), 400
 
-    return jsonify({
-        "success": True,
-        "message": "User registered successfully"
-    }), 201
+    return jsonify({"success": True, "message": message}), 201
 
+
+# -------------------------------------------------------------------------
+# Main
+# -------------------------------------------------------------------------
 if __name__ == '__main__':
     PORT = int(os.environ.get('PORT', 5005))
     print(f"\n{'='*60}")
-    print(f"Fact-Checking API Server")
+    print("Fact-Checking API Server")
     print(f"{'='*60}")
     print(f"Server URL: http://localhost:{PORT}")
     print(f"API endpoint: http://localhost:{PORT}/chat")
