@@ -38,6 +38,10 @@ echo "===================================="
 
 cleanup() {
     kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+    SESSION_FILE=".session_state/auth_session.json"
+    if [ -f "$SESSION_FILE" ]; then
+        rm -f "$SESSION_FILE" && echo "Session state cleared."
+    fi
 }
 trap cleanup EXIT
 wait
