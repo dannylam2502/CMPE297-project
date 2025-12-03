@@ -971,4 +971,4 @@ gold_standard_dataset = [
         ground_truth_verdict="Not enough evidence" # The passages imply dogs are more popular, but don't state it
     ),
 ]
-print(f"Generated a new dataset with {len(gold_standard_dataset)} examples.")
+# print(f"Generated a new dataset with {len(gold_standard_dataset)} examples.")
