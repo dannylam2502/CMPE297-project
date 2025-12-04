@@ -359,6 +359,8 @@ class FactCheckingPipeline:
             claim_text = user_input
             claim_type = "QUESTION"
 
+        print(f"Claim Type: {claim_type}, Broad Query: {is_broad} claim_text: {claim_text} claim_data: {json.dumps(claim_data, indent=4, default=str)}")
+
         # --- BRANCH 1: BROAD QUESTION / QA MODE ---
         # We enter this if the LLM flagged it OR our Heuristic flagged it
         if is_broad:
@@ -434,6 +436,8 @@ class FactCheckingPipeline:
                 claim_type=claim_type,
                 passages=passages
             )
+
+            print(f"[Pipeline] Fact Check Result: {result.verdict} (Score: {result.score}/100)")
             
             # Step 4: Format
             return {
