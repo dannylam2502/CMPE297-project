@@ -42,7 +42,7 @@ def scrape_full_text(url: str) -> str:
 # -----------------------------
 #   TEXT CHUNKING FOR RAG
 # -----------------------------
-def chunk_text(text: str, chunk_size=500, overlap=100) -> List[str]:
+def chunk_text(text: str, chunk_size=50, overlap=10) -> List[str]:
     words = text.split()
     chunks = []
 
