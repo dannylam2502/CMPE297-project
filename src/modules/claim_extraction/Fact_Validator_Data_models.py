@@ -85,14 +85,14 @@ class CitationValidationScoring(Citation):
 
 @dataclass
 class FactCheckFeatures:
-    entail_max: float
-    entail_mean3: float
-    contradict_max: float
-    contradict_mean3: float  
-    neutral_mean: float    
-    agree_domain_count: int
-    relevance_score_avg: float
-    recency_weight_max: float
+    entail_max: float = 0.0
+    entail_mean3: float = 0.0
+    contradict_max: float = 0.0
+    contradict_mean3: float   = 0.0
+    neutral_mean: float     = 0.0
+    agree_domain_count: int = 0
+    relevance_score_avg: float = 0.0
+    recency_weight_max: float = 0.0
     contest_score: float = 0.0
 
 @dataclass

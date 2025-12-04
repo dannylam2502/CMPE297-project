@@ -80,8 +80,12 @@ class FactCheckingPipeline:
 
         # Fact validator
         nli = NLIModel(
-            emb_model_name="sentence-transformers/all-mpnet-base-v2",
-            nli_model_name="roberta-large-mnli",
+            # EMBEDDING UPGRADE: From mpnet to BGE (currently top-tier on MTEB)
+            emb_model_name="BAAI/bge-large-en-v1.5",
+            
+            # NLI UPGRADE: From RoBERTa to DeBERTa V3 (Specialized for NLI)
+            nli_model_name="cross-encoder/nli-deberta-v3-large",
+            
             nli_labels=NLI_LABELS
         )
         # self.fact_validator = FactValidator(self.llm, nli, training_data=get_training_data())
@@ -359,6 +363,8 @@ class FactCheckingPipeline:
             claim_text = user_input
             claim_type = "QUESTION"
 
+        print(f"Claim Type: {claim_type}, Broad Query: {is_broad} claim_text: {claim_text} claim_data: {json.dumps(claim_data, indent=4, default=str)}")
+
         # --- BRANCH 1: BROAD QUESTION / QA MODE ---
         # We enter this if the LLM flagged it OR our Heuristic flagged it
         if is_broad:
@@ -434,6 +440,8 @@ class FactCheckingPipeline:
                 claim_type=claim_type,
                 passages=passages
             )
+
+            print(f"[Pipeline] Fact Check Result: {result.verdict} (Score: {result.score}/100)")
             
             # Step 4: Format
             return {
