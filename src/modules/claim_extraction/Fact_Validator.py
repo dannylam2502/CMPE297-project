@@ -56,7 +56,7 @@ class FactValidator:
         
         print("FactValidator is ready.")
 
-    def _prepare_features(self, features: 'FactCheckFeatures', num_agree: int, num_disagree: int, len_valid_results: int, len_passages: int) -> np.ndarray:
+    def _prepare_features(self, features: 'FactCheckFeatures', num_agree: int, num_disagree: int, len_valid_results: int) -> np.ndarray:
         
         # Avoid division by zero
         total = len_valid_results if len_valid_results > 0 else 1
@@ -76,11 +76,10 @@ class FactValidator:
             num_agree / total,    # [!] Added Ratio
             num_disagree / total, # [!] Added Ratio
             len_valid_results,
-            len_passages
         ]
         return np.array(feature_vector).reshape(1, -1)
 
-    def _calculate_final_score_and_verdict(self, features: 'FactCheckFeatures', num_agree: int, num_disagree: int, len_valid_results: int, len_passages: int) -> Tuple[VerdictType, int]:
+    def _calculate_final_score_and_verdict(self, features: 'FactCheckFeatures', num_agree: int, num_disagree: int, len_valid_results: int) -> Tuple[VerdictType, int]:
         """
         Uses the trained Random Forest to predict the verdict AND
         calculate a confidence score based on the model's output probabilities.
@@ -93,8 +92,7 @@ class FactValidator:
             features, 
             num_agree, 
             num_disagree, 
-            len_valid_results, 
-            len_passages
+            len_valid_results,
         )
 
         # 2. Get the probabilities for ALL classes
@@ -192,7 +190,6 @@ class FactValidator:
             print(f"Passage relevance score: {p.relevance_score} domain:{p.domain} url:{p.url} passage: {p.content[:50]}...")
         top_3_passages = sorted(passages, key=lambda p: p.relevance_score, reverse=True)[:3]
         related_passages = [p for p in top_3_passages if p.relevance_score >= self.related_gate]
-        len_passages = len(related_passages)
 
         if not related_passages:
             features = FactCheckFeatures(0, 0, 0, 0, 0, 0, 0, 0, 0)
@@ -202,7 +199,6 @@ class FactValidator:
         # 2. Get NLI results
         passage_contents = [p.content for p in related_passages]
         nli_results = self._get_nli_results(claim, passage_contents)
-        print(f"[NLI] Processed {len(nli_results)} passages. Sample scores: {nli_results[:2]}")
 
         # 3. Combine all info
         all_results = []
@@ -213,7 +209,7 @@ class FactValidator:
                 recency_weight=recency_w, numeric_date_ok=date_ok
             ))
             
-            print(f"Passage Relevance: {passage.relevance_score}, Entail: {e:.2f}, Contra: {c:.2f}, Neutral: {n:.2f} | Recency Weight: {recency_w:.2f} domain:{passage.domain} url:{passage.url} passage: {passage.content}...")
+            print(f"Passage Relevance: {passage.relevance_score}, length:{len(passage.content)} Entail: {e:.2f}, Contra: {c:.2f}, Neutral: {n:.2f} | Recency Weight: {recency_w:.2f} domain:{passage.domain} url:{passage.url} passage: {passage.content}...")
             print('........................')
 
         # 4. Filter valid results (not strongly neutral)
@@ -245,7 +241,7 @@ class FactValidator:
 
         # 7. Get final verdict (using the classifier)
         verdict, score = self._calculate_final_score_and_verdict(
-            features, num_agree, num_disagree, len_valid_results, len_passages
+            features, num_agree, num_disagree, len_valid_results
         )
         print(f"[VERDICT] {verdict} (score: {score}) | agree={num_agree}, disagree={num_disagree}, features: entail_max={features.entail_max:.2f}, contra_max={features.contradict_max:.2f}")
 
@@ -266,14 +262,13 @@ class FactValidator:
 
         return result
     
-    def generate_training_example(self, claim: str, passages: List[SourcePassage]) -> Tuple[FactCheckFeatures, int, int, int, int]:
+    def generate_training_example(self, claim: str, passages: List[SourcePassage]) -> Tuple[FactCheckFeatures, int, int, int]:
         # 1. Filter by relevance
         related_passages = [p for p in passages if p.relevance_score >= self.related_gate]
-        len_passages = len(related_passages)
 
         if not related_passages:
             features = FactCheckFeatures(0, 0, 0, 0, 0, 0)
-            return features, 0, 0, 0, 0
+            return features, 0, 0, 0
 
         # 2. Get NLI results
         passage_contents = [p.content for p in related_passages]
@@ -295,7 +290,7 @@ class FactValidator:
         
         if not valid_results:
             features = self._calculate_features(all_results)
-            return features, 0, 0, 0, len_passages # Return len_passages
+            return features, 0, 0, 0 # Return len_passages
 
         # 5. Get counts
         num_agree = sum(1 for r in valid_results if r.entail_prob > self.agree_cut)
@@ -305,7 +300,7 @@ class FactValidator:
         features = self._calculate_features(valid_results)
 
         # 7. Return the raw features and counts
-        return features, num_agree, num_disagree, len_valid_results, len_passages
+        return features, num_agree, num_disagree, len_valid_results
 
     def _train(self, gold_standard_dataset: List[GoldStandardExample]):
         """
@@ -353,13 +348,13 @@ class FactValidator:
         for i, item in enumerate(train_dataset):
             # 1. Use the *passed-in validator's* method to process the text
             # This ensures we use the same settings (e.g., related_gate)
-            features, num_a, num_d, len_v, len_p = self.generate_training_example(
+            features, num_a, num_d, len_v = self.generate_training_example(
                 item.claim, item.passages
             )
             
             # 2. Get the feature vector
             feature_vector_1d = self._prepare_features(
-                features, num_a, num_d, len_v, len_p
+                features, num_a, num_d, len_v
             )[0]
             
             X_train_list.append(feature_vector_1d)
@@ -501,7 +496,7 @@ class FactValidator:
             vec = self._prepare_features(
                 feats, 
                 num_agree=3, num_disagree=0, 
-                len_valid_results=3, len_passages=5
+                len_valid_results=3
             )[0]
             
             synthetic_X.append(vec)
@@ -528,7 +523,7 @@ class FactValidator:
             vec = self._prepare_features(
                 feats, 
                 num_agree=0, num_disagree=3, 
-                len_valid_results=3, len_passages=5
+                len_valid_results=3
             )[0]
             
             synthetic_X.append(vec)
@@ -555,7 +550,7 @@ class FactValidator:
             vec = self._prepare_features(
                 feats, 
                 num_agree=2, num_disagree=2, # Even split
-                len_valid_results=4, len_passages=6
+                len_valid_results=4
             )[0]
             
             synthetic_X.append(vec)
